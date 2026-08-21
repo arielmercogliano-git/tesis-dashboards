@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tesis · Rentabilidad por Empleado</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1" crossorigin="anonymous"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #080c14; --s1: #0d1220; --s2: #111827; --s3: #1a2235;
+  --border: #1e2d45; --border2: #253550;
+  --a1: #2563eb; --a2: #3b82f6; --a3: #60a5fa;
+  --green: #10b981; --amber: #f59e0b; --red: #ef4444; --purple: #8b5cf6; --cyan: #06b6d4;
+  --text: #f1f5f9; --t2: #94a3b8; --t3: #475569;
+  --mono: 'DM Mono', monospace; --sans: 'DM Sans', sans-serif;
+}
+:root[data-theme="light"] {
+  --bg: #f4f6fa; --s1: #ffffff; --s2: #f1f3f8; --s3: #eef1f6;
+  --border: #e2e8f0; --border2: #cbd5e1;
+  --text: #0f172a; --t2: #334155; --t3: #94a3b8;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; min-height: 100vh; }
+
+.topbar { position: sticky; top: 0; z-index: 40; background: rgba(8,12,20,0.92); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); padding: 16px 28px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+:root[data-theme="light"] .topbar { background: rgba(244,246,250,0.92); }
+.title-block .name { font-size: 19px; font-weight: 700; letter-spacing: -0.4px; }
+.title-block .name span { color: var(--a2); }
+.title-block .sub { font-size: 11px; color: var(--t3); font-family: var(--mono); margin-top: 2px; }
+.live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; }
+.live-dot.on { background: var(--green); animation: pulse 2s infinite; }
+.live-dot.off { background: var(--red); }
+.live-dot.busy { background: var(--amber); animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
+.topbar-right { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; border: none; font-family: var(--sans); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.btn-primary { background: var(--a1); color: #fff; } .btn-primary:hover { background: var(--a2); } .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
+.btn-ghost { background: transparent; color: var(--t2); border: 1px solid var(--border); } .btn-ghost:hover { border-color: var(--a2); color: var(--text); }
+.btn-green { background: transparent; color: var(--green); border: 1px solid rgba(16,185,129,.3); }
+.btn-amber { background: transparent; color: var(--amber); border: 1px solid rgba(245,158,11,.3); }
+select, input[type=text] { background: var(--s3); border: 1px solid var(--border2); border-radius: 6px; padding: 7px 12px; font-size: 12px; font-family: var(--mono); color: var(--a3); outline: none; }
+.fx-badge { background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.2); border-radius: 6px; padding: 5px 10px; font-size: 11px; font-family: var(--mono); color: var(--green); display:none; }
+
+.content { padding: 22px 28px 48px; }
+#app-error { display:none; margin: 0 0 16px; background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25); border-radius: 10px; padding: 14px 18px; font-size: 12px; color: var(--red); font-family: var(--mono); white-space: pre-wrap; word-break: break-word; }
+.loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; gap: 14px; color: var(--t3); }
+.spinner { width: 28px; height: 28px; border: 2px solid var(--border); border-top-color: var(--a2); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-state .msg { font-family: var(--mono); font-size: 12px; }
+#app-body { display: none; }
+
+.filters-bar { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 20px; background: var(--s1); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; }
+.fg { display: flex; flex-direction: column; gap: 4px; }
+.fg label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px; color: var(--t3); }
+.fg select, .fg input { min-width: 200px; }
+#f-emp-buscar { min-width: 160px; }
+
+.kpi-grid { display: grid; grid-template-columns: repeat(6,1fr); gap: 14px; margin-bottom: 20px; }
+.kpi { background: var(--s1); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; position: relative; overflow: hidden; }
+.kpi::after { content:''; position:absolute; top:0; left:0; right:0; height:2px; }
+.kpi.blue::after { background: linear-gradient(90deg,var(--a1),var(--cyan)); }
+.kpi.green::after { background: linear-gradient(90deg,var(--green),#059669); }
+.kpi.amber::after { background: linear-gradient(90deg,var(--amber),#d97706); }
+.kpi.red::after { background: linear-gradient(90deg,var(--red),#dc2626); }
+.kpi.purple::after { background: linear-gradient(90deg,var(--purple),#7c3aed); }
+.kpi-label { font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--t3); margin-bottom: 8px; }
+.kpi-value { font-size: 20px; font-weight: 700; letter-spacing: -0.4px; line-height: 1; margin-bottom: 4px; }
+.kpi-sub { font-size: 10.5px; color: var(--t3); }
+
+.card { background: var(--s1); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 18px; }
+.card-header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.card-header h3 { font-size: 13px; font-weight: 600; }
+.card-header .sub { font-size: 11px; color: var(--t3); }
+.card-body { padding: 18px 20px; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.chart-card { background: var(--s1); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 18px; }
+.chart-card h3 { font-size: 12px; font-weight: 600; color: var(--t2); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 14px; }
+.chart-card canvas { max-height: 280px; }
+
+.tbl-wrap { overflow-x: auto; max-height: 480px; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead th { position: sticky; top: 0; z-index: 1; text-align: left; padding: 9px 13px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--t3); background: var(--s2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+tbody tr { border-bottom: 1px solid var(--border); } tbody tr:last-child { border-bottom: none; } tbody tr:hover { background: var(--s3); }
+tbody td { padding: 9px 13px; color: var(--t2); }
+td.bold { color: var(--text); font-weight: 600; }
+td.mono { font-family: var(--mono); font-size: 11px; }
+td.amt { font-family: var(--mono); text-align: right; white-space: nowrap; }
+td.hrs { font-family: var(--mono); text-align: right; color: var(--text); }
+td.green { color: var(--green); } td.red { color: var(--red); }
+tfoot td { padding: 10px 13px; font-family: var(--mono); font-weight: 700; border-top: 2px solid var(--border2); background: var(--s2); }
+.badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:600; }
+.b-purple { background: rgba(139,92,246,.12); color: var(--purple); }
+.b-amber { background: rgba(245,158,11,.12); color: var(--amber); }
+.empty { padding: 40px; text-align: center; color: var(--t3); font-size: 12px; }
+
+.pager { display:flex; justify-content:space-between; align-items:center; padding:9px 13px; border-top:1px solid var(--border); font-size:11px; color:var(--t3); }
+.pager-btns { display:flex; gap:4px; flex-wrap:wrap; }
+.pager-btn { padding:3px 9px; border-radius:5px; border:1px solid var(--border); background:var(--s2); color:var(--t2); cursor:pointer; font-size:11px; }
+.pager-btn.on { background:var(--a1); color:#fff; border-color:var(--a1); }
+
+.note { font-size: 10.5px; color: var(--t3); padding: 0 20px 12px; }
+
+@media (max-width: 1100px) {
+  .kpi-grid { grid-template-columns: repeat(3,1fr); }
+  .grid-2 { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="title-block">
+    <div class="name">Tesis <span>·</span> Rentabilidad por Empleado</div>
+    <div class="sub"><span class="live-dot off" id="live-dot"></span><span id="live-label">Conectando…</span></div>
+  </div>
+  <div class="topbar-right">
+    <select id="f-year" onchange="onYearChange()">
+      <option value="2026">2026</option>
+      <option value="2025">2025</option>
+      <option value="2024">2024</option>
+      <option value="2023">2023</option>
+      <option value="all">Todos</option>
+    </select>
+    <span class="fx-badge" id="fx-badge"></span>
+    <button class="btn btn-amber" id="btn-usd" onclick="toggleUSD()">💵 Ver en USD</button>
+    <button class="btn btn-ghost" id="btn-theme" onclick="toggleTheme()">☀️ Ver en claro</button>
+    <button class="btn btn-primary" id="btn-refresh" onclick="recargar()">↻ Actualizar</button>
+    <span id="sesion-email" style="font-size:11px;color:var(--t3);font-family:var(--mono)"></span>
+    <button class="btn btn-ghost" onclick="cerrarSesionYRedirigir()">Salir</button>
+  </div>
+</div>
+
+<div class="content">
+  <div id="app-error"></div>
+
+  <div id="app-loading" class="loading-state">
+    <div class="spinner"></div>
+    <div class="msg" id="loading-msg">Conectando a Business Central…</div>
+  </div>
+
+  <div id="app-body">
+
+    <div class="filters-bar">
+      <div class="fg">
+        <label>Buscar empleado</label>
+        <input type="text" id="f-emp-buscar" placeholder="Nombre o código…" oninput="poblarSelectEmpleado()">
+      </div>
+      <div class="fg">
+        <label>Empleado</label>
+        <select id="f-emp" onchange="onFiltroChange()" style="min-width:260px"></select>
+      </div>
+      <div class="fg">
+        <label>Mes</label>
+        <select id="f-mes" onchange="onFiltroChange()">
+          <option value="all">Todos los meses</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label>Proyecto</label>
+        <select id="f-proy" onchange="onFiltroChange()" style="min-width:150px">
+          <option value="all">Todos los proyectos</option>
+        </select>
+      </div>
+    </div>
+    <div class="note" style="margin:-10px 0 16px">Ariel Mercogliano y Pablo Berman (socios) están excluidos de este reporte — sus costos dimensionados son retiros de capital, no gasto operativo ni costo de proyecto.</div>
+
+    <div class="kpi-grid">
+      <div class="kpi blue"><div class="kpi-label">Horas</div><div class="kpi-value" id="k-horas">—</div><div class="kpi-sub">registros Usage</div></div>
+      <div class="kpi green"><div class="kpi-label">Facturación Sin IVA</div><div class="kpi-value" id="k-sin-iva">—</div><div class="kpi-sub" id="k-moneda-1">MXN</div></div>
+      <div class="kpi green"><div class="kpi-label">Facturación Con IVA</div><div class="kpi-value" id="k-con-iva">—</div><div class="kpi-sub" id="k-moneda-2">MXN</div></div>
+      <div class="kpi red"><div class="kpi-label">Costo Nómina</div><div class="kpi-value" id="k-costo-nomina">—</div><div class="kpi-sub">gasto real, sólo débito</div></div>
+      <div class="kpi amber"><div class="kpi-label">Otro Costo Directo</div><div class="kpi-value" id="k-costo-otro">—</div><div class="kpi-sub">outsourcing/maquila</div></div>
+      <div class="kpi purple"><div class="kpi-label">Margen</div><div class="kpi-value" id="k-margen">—</div><div class="kpi-sub" id="k-margen-pct">—</div></div>
+    </div>
+
+    <!-- ══ Tabla agregada (todos los empleados / todos los meses según filtro) ══ -->
+    <div class="card" id="card-tabla-agregada">
+      <div class="card-header">
+        <h3 id="tabla-agregada-titulo">Rentabilidad por Empleado y Mes</h3>
+        <span class="sub" id="tabla-agregada-sub">—</span>
+      </div>
+      <div class="note">Costo Nómina y Otro Costo Directo salen de asientos contables (débito, cuentas Gasto/Costo de Ventas) etiquetados con la dimensión RECURSO de cada persona. Margen = Facturación sin IVA − Costo Total. "Mes" usa el período real de servicio de la tarea de proyecto cuando está disponible (ej. "MARZO 2026"); si el proyecto no sigue esa convención, se estima con la fecha de carga de las horas.</div>
+      <div class="tbl-wrap" id="tbl-agregada-wrap"></div>
+    </div>
+
+    <!-- ══ Detalle de un empleado puntual (visible sólo si se elige uno específico) ══ -->
+    <div id="detalle-empleado" style="display:none">
+
+      <div class="grid-2">
+        <div class="chart-card">
+          <h3>Evolución Mensual — Facturación vs Costo</h3>
+          <canvas id="ch-evolucion"></canvas>
+        </div>
+        <div class="chart-card">
+          <h3>Composición del Costo Directo</h3>
+          <canvas id="ch-composicion-costo"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3 id="fact-detalle-titulo">Facturación — Detalle (horas → factura)</h3><span class="sub" id="fact-detalle-sub">—</span></div>
+        <div class="note" style="padding:0 0 10px">"Período" es el mes real de servicio, tomado de la descripción de la tarea de proyecto (ej. "MARZO 2026" o "DEL 16/02 AL 15/03") cuando el proyecto sigue esa convención — así se ve marcado como <span class="badge b-purple" style="font-size:9px">tarea</span>. Si el proyecto es de alcance fijo y no tiene esa convención, se estima con la fecha de carga de horas, marcado como <span class="badge b-amber" style="font-size:9px">estimado</span>. "Fecha Factura" es cuándo se facturó al cliente — normalmente más tarde que el período de servicio.</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead id="tbl-fact-detalle-head"><tr><th>Período</th><th>Fecha Factura</th><th>Rezago</th><th>Proyecto</th><th>Tarea</th><th style="text-align:right">Horas</th><th>N° Factura</th><th>Cliente</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th></tr></thead>
+            <tbody id="tbl-fact-detalle"></tbody>
+            <tfoot id="tbl-fact-detalle-foot"></tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3 id="costo-detalle-titulo">Costos Directos — Detalle (apertura completa)</h3><span class="sub" id="costo-detalle-sub">—</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead id="tbl-costo-detalle-head"><tr><th>Fecha</th><th>Cuenta</th><th>Nombre de Cuenta</th><th>Tipo</th><th style="text-align:right">Monto</th></tr></thead>
+            <tbody id="tbl-costo-detalle"></tbody>
+            <tfoot id="tbl-costo-detalle-foot"></tfoot>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+//  TESIS · RENTABILIDAD POR EMPLEADO — datos en vivo desde BC
+//  vía proxy Railway (bc-proxy-tesis). Sin valores hardcodeados.
+// ════════════════════════════════════════════════════════════
+
+const PROXY = 'https://bc-proxy-tesis-production.up.railway.app';
+const API_KEY = 'A9L-ySuPiO-uy8o0ZzOfj3Bi7igRyMD2NsyRWwwesks';
+const TENANT_ID = '12fb0059-aa40-4564-97db-c6ffc7d7543d';
+const COMPANY_URL_NAME = "My%20Company";
+const V2_BASE = `https://api.businesscentral.dynamics.com/v2.0/${TENANT_ID}/Production/api/v2.0`;
+const ODATA_BASE = `https://api.businesscentral.dynamics.com/v2.0/${TENANT_ID}/Production/ODataV4/Company('${COMPANY_URL_NAME}')`;
+const NOMINA_KEYWORDS = ['SUELDO','SALARIO','HORAS EXTRA','PREMIO','DESPENSA','IMPUESTO SOBRE NOMINA','IMPUESTO AL SALARIO','RETIRO, CESANTIA','VALES DE'];
+
+// Estos códigos RECURSO corresponden a socios (Ariel Mercogliano, Pablo Berman). Cualquier
+// costo o registro dimensionado a ellos es en realidad un retiro de capital, no un gasto
+// operativo ni un costo de proyecto — se excluyen por completo de este reporte de rentabilidad.
+const SOCIOS_RECURSO_EXCLUIR = ['D 001', 'D 002'];
+
+let TOKEN = null, TOKEN_EXP = 0;
+let companyId = null;
+let empleadosMap = {};
+let accountsByNumber = {};
+let dimSetToRecurso = {};
+let salesInvoices = [];
+let rawMovs = [];
+let glRawEntries = [];
+let taskPeriodMap = {};   // "Job_No||Job_Task_No" -> {mes, label, fuente}
+let cruceRows = [];       // horas → factura, prorrateado (con _empCod, _montoSinIVA, _montoConIVA, _mes...)
+let costRows = [];        // líneas de costo directo (empCod, fecha, cuenta, tipo, monto)
+let porEmpMes = {};       // "empCod||YYYY-MM" -> {horas, sinIVA, conIVA, costoNomina, costoOtro, facturas:Set}
+let porEmpMesJob = {};    // "empCod||YYYY-MM||Job_No" -> ídem + costo NÓMINA/OTRO prorrateado por horas dentro del mes
+let fxRate = null, showUSD = false;
+let theme = 'dark';
+let firstLoadDone = false;
+let charts = {};
+
+function qs(id){ return document.getElementById(id); }
+
+// ── Estado / errores ───────────────────────────────────────
+function setLive(state, label){ qs('live-dot').className='live-dot '+state; qs('live-label').textContent=label; }
+function setLoadingMsg(m){ const el=qs('loading-msg'); if(el) el.textContent=m; }
+function showError(msg){ const el=qs('app-error'); el.style.display='block'; el.textContent='❌ '+msg; }
+function clearError(){ qs('app-error').style.display='none'; }
+
+// ════════════════════════════════════════════════════════════
+//  SESIÓN — requiere login (login.html) antes de tocar el proxy
+// ════════════════════════════════════════════════════════════
+const SESSION_KEY = 'tesis_session_token';
+const SESSION_EMAIL_KEY = 'tesis_session_email';
+function getSessionToken(){ return localStorage.getItem(SESSION_KEY); }
+function cerrarSesionYRedirigir(){
+  localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(SESSION_EMAIL_KEY);
+  window.location.href = 'login.html';
+}
+if (!getSessionToken()){
+  window.location.href = 'login.html';
+}
+{ const el = qs('sesion-email'); if (el) el.textContent = localStorage.getItem(SESSION_EMAIL_KEY) || ''; }
+
+// ════════════════════════════════════════════════════════════
+//  AUTH & FETCH — vía proxy Railway
+// ════════════════════════════════════════════════════════════
+async function getToken(){
+  if (TOKEN && Date.now() < TOKEN_EXP - 60000) return TOKEN;
+  const r = await fetch(`${PROXY}/token`, { method:'POST', headers:{'Content-Type':'application/json','x-api-key':API_KEY,'x-session-token':getSessionToken()||''}, body: JSON.stringify({}) });
+  if (r.status === 401) { cerrarSesionYRedirigir(); throw new Error('Sesión vencida, redirigiendo al login…'); }
+  if (!r.ok) { const e = await r.text(); throw new Error(`/token ${r.status}: ${e.slice(0,300)}`); }
+  const d = await r.json();
+  TOKEN = d.access_token; TOKEN_EXP = Date.now() + (d.expires_in||3600)*1000;
+  return TOKEN;
+}
+async function bcFetch(url){
+  const tok = await getToken();
+  const r = await fetch(`${PROXY}/bc?token=${encodeURIComponent(tok)}&url=${encodeURIComponent(url)}`, { headers:{'x-api-key':API_KEY,'x-session-token':getSessionToken()||''} });
+  if (r.status === 401) { cerrarSesionYRedirigir(); throw new Error('Sesión vencida, redirigiendo al login…'); }
+  if (!r.ok) { const e = await r.text(); throw new Error(`/bc ${r.status}: ${e.slice(0,300)}`); }
+  return r.json();
+}
+async function bcFetchAll(url, cap=30000){
+  const rows = []; let next = url, guard = 0;
+  while (next && guard < 25) {
+    const d = await bcFetch(next);
+    rows.push(...(d.value||[]));
+    next = d['@odata.nextLink'] || null;
+    guard++;
+    if (rows.length >= cap) break;
+  }
+  return rows;
+}
+async function pingProxy(){ const r = await fetch(`${PROXY}/ping`); if (!r.ok) throw new Error('Proxy no disponible'); return r.json(); }
+async function getCompanyId(){
+  if (companyId) return companyId;
+  const d = await bcFetch(`${V2_BASE}/companies`);
+  companyId = (d.value||[])[0]?.id;
+  if (!companyId) throw new Error('No se encontró la compañía en Business Central');
+  return companyId;
+}
+
+// ════════════════════════════════════════════════════════════
+//  CARGA DE DATOS
+// ════════════════════════════════════════════════════════════
+async function cargarEmpleados(){
+  const cid = await getCompanyId();
+  const dims = await bcFetch(`${V2_BASE}/companies(${cid})/dimensions?$top=50`);
+  const recurso = (dims.value||[]).find(d => (d.code||'').toUpperCase()==='RECURSO');
+  if (!recurso) return;
+  const vals = await bcFetchAll(`${V2_BASE}/companies(${cid})/dimensions(${recurso.id})/dimensionValues?$top=2000`);
+  empleadosMap = {};
+  vals.forEach(v => { if (v.code) empleadosMap[v.code] = v.displayName || v.name || v.code; });
+}
+async function cargarCuentas(){
+  const cid = await getCompanyId();
+  const rows = await bcFetchAll(`${V2_BASE}/companies(${cid})/accounts?$top=1000`);
+  accountsByNumber = {};
+  rows.forEach(a => { accountsByNumber[a.number] = a; });
+}
+async function cargarDimensionSetsRecurso(){
+  const rows = await bcFetchAll(`${ODATA_BASE}/DimensionSetEntries?$filter=Dimension_Code eq 'RECURSO'&$top=5000`);
+  dimSetToRecurso = {};
+  rows.forEach(r => { if (r.Dimension_Value_Code) dimSetToRecurso[r.Dimension_Set_ID] = r.Dimension_Value_Code; });
+}
+
+// El "período de servicio" real (a qué mes corresponde el trabajo) no está en MovsProyecto:
+// está escrito en la descripción de la tarea de proyecto (Job_Task_Lines.Description), en
+// distintos formatos según el proyecto: "DEL DD/MM/YYYY AL DD/MM/YYYY", "MES AÑO",
+// "MES1-MES2 AÑO", a veces con un código de referencia adelante (ej. "E1699 JULIO 2025").
+// Proyectos de alcance fijo (sin periodicidad mensual) no tienen esta convención — para esos
+// no hay forma de saber el período de servicio y se usa la fecha de carga de horas como respaldo.
+const MESES_ES = {ENERO:1,FEBRERO:2,MARZO:3,ABRIL:4,MAYO:5,JUNIO:6,JULIO:7,AGOSTO:8,SEPTIEMBRE:9,OCTUBRE:10,NOVIEMBRE:11,DICIEMBRE:12};
+const MESES_ABR = {ENE:1,FEB:2,MAR:3,ABR:4,MAY:5,JUN:6,JUL:7,AGO:8,SEP:9,OCT:10,NOV:11,DIC:12};
+
+function parsearPeriodoTarea(desc){
+  if (!desc) return null;
+  const d = desc.toUpperCase();
+
+  // "DEL DD/MM/YYYY AL DD/MM/YYYY" (con o sin código de referencia adelante)
+  let m = d.match(/DEL\s+(\d{1,2})\/(\d{1,2})\/(\d{4})\s+AL\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m){
+    const mes = `${m[3]}-${m[2].padStart(2,'0')}`;
+    return { mes, label: `${m[1]}/${m[2]}/${m[3]} – ${m[4]}/${m[5]}/${m[6]}`, fuente: 'tarea' };
+  }
+
+  // "MES1-MES2 AÑO" (ej. "ENE-FEB 2026")
+  m = d.match(/\b([A-ZÑ]{3,12})-([A-ZÑ]{3,12})\s+(\d{4})\b/);
+  if (m){
+    const mes1 = MESES_ES[m[1]] || MESES_ABR[m[1]];
+    if (mes1) return { mes: `${m[3]}-${String(mes1).padStart(2,'0')}`, label: `${m[1]}-${m[2]} ${m[3]}`, fuente: 'tarea' };
+  }
+
+  // "MES AÑO" (ej. "MARZO 2026", "JULIO 2025")
+  m = d.match(/\b([A-ZÑ]{3,12})\s+(\d{4})\b/);
+  if (m){
+    const mes = MESES_ES[m[1]] || MESES_ABR[m[1]];
+    if (mes) return { mes: `${m[2]}-${String(mes).padStart(2,'0')}`, label: `${m[1]} ${m[2]}`, fuente: 'tarea' };
+  }
+
+  return null; // proyecto de alcance fijo, sin período mensual identificable en el texto
+}
+
+async function cargarJobTaskLines(){
+  const rows = await bcFetchAll(`${ODATA_BASE}/Job_Task_Lines?$top=2000`);
+  taskPeriodMap = {};
+  rows.forEach(t => {
+    const periodo = parsearPeriodoTarea(t.Description);
+    if (periodo) taskPeriodMap[`${t.Job_No}||${t.Job_Task_No}`] = periodo;
+  });
+}
+function dateFilterV2(year, field){ return year==='all' ? '' : `&$filter=${field} ge ${year}-01-01 and ${field} le ${year}-12-31`; }
+async function cargarSalesInvoices(year){
+  const cid = await getCompanyId();
+  salesInvoices = await bcFetchAll(`${V2_BASE}/companies(${cid})/salesInvoices?$top=1000${dateFilterV2(year,'postingDate')}`);
+}
+async function cargarMovs(year){
+  const dateF = year!=='all' ? `&$filter=Posting_Date ge ${year}-01-01T00:00:00Z and Posting_Date le ${year}-12-31T23:59:59Z` : '';
+  rawMovs = await bcFetchAll(`${ODATA_BASE}/MovsProyecto?$top=5000${dateF}`, 30000);
+}
+async function cargarGLRaw(year){
+  const dateF = year!=='all' ? `&$filter=Posting_Date ge ${year}-01-01T00:00:00Z and Posting_Date le ${year}-12-31T23:59:59Z` : '';
+  glRawEntries = await bcFetchAll(`${ODATA_BASE}/G_LEntries?$top=20000${dateF}`, 30000);
+}
+
+// ════════════════════════════════════════════════════════════
+//  PROCESAMIENTO
+// ════════════════════════════════════════════════════════════
+function isUsage(r){ return String(r.Entry_Type||'').toLowerCase()==='usage'; }
+function isSale(r){ return String(r.Entry_Type||'').toLowerCase()==='sale'; }
+function empName(c){ if(!c) return null; return empleadosMap[c] || c; }
+
+function procesarDatos(){
+  const usageRows = rawMovs.filter(r => isUsage(r) && !SOCIOS_RECURSO_EXCLUIR.includes(r.Global_Dimension_2_Code));
+  const saleRowsAll = rawMovs.filter(isSale);
+  const invByNumber = {};
+  salesInvoices.forEach(inv => { invByNumber[inv.number] = inv; });
+
+  const saleMap = {};
+  saleRowsAll.forEach(s => { const k = `${s.Job_No}||${s.Job_Task_No}`; (saleMap[k]=saleMap[k]||[]).push(s); });
+
+  // cruce inicial: cada usage row -> factura asignada (primera venta que matchee el job+task)
+  const cruce = usageRows.map(u => {
+    const k = `${u.Job_No}||${u.Job_Task_No}`;
+    const sales = saleMap[k] || [];
+    const sale = sales[0] || null;
+    const factura = sale?.Document_No || '—';
+    const periodoTarea = taskPeriodMap[k] || null;
+    const fecha = u.Posting_Date || '';
+    return {
+      empCod: u.Global_Dimension_2_Code || '', job: u.Job_No||'—', task: u.Job_Task_No||'—',
+      qty: parseFloat(u.Quantity||0), fecha, factura, key: k,
+      mes: periodoTarea ? periodoTarea.mes : fecha.slice(0,7),
+      mesFuente: periodoTarea ? 'tarea' : 'carga',
+      mesLabel: periodoTarea ? periodoTarea.label : null,
+    };
+  });
+
+  // horas totales por factura (para prorratear el monto de la factura entre todos los que la comparten)
+  const horasPorFactura = {};
+  cruce.forEach(r => { if (r.factura!=='—') horasPorFactura[r.factura] = (horasPorFactura[r.factura]||0) + r.qty; });
+
+  cruceRows = cruce.map(r => {
+    if (r.factura==='—' || !invByNumber[r.factura]) return { ...r, empName: empName(r.empCod)||r.empCod||'—', cliente:'—', montoSinIVA:0, montoConIVA:0, fechaFactura:null };
+    const inv = invByNumber[r.factura];
+    const totalHorasFac = horasPorFactura[r.factura] || 1;
+    const share = r.qty / totalHorasFac;
+    return {
+      ...r, empName: empName(r.empCod)||r.empCod||'—', cliente: inv.customerName||'—',
+      fechaFactura: inv.postingDate||null,
+      montoSinIVA: (inv.totalAmountExcludingTax||0) * share,
+      montoConIVA: (inv.totalAmountIncludingTax||0) * share,
+    };
+  });
+
+  // ── Costos directos: G_LEntries dimensionados por RECURSO, sólo débito en cuentas Expense/COGS ──
+  costRows = [];
+  glRawEntries.forEach(e => {
+    const empCod = dimSetToRecurso[e.Dimension_Set_ID];
+    if (!empCod) return;
+    if (SOCIOS_RECURSO_EXCLUIR.includes(empCod)) return; // retiro de capital de socios, no es costo operativo
+    const debit = e.Debit_Amount || 0;
+    if (debit <= 0) return;
+    const acc = accountsByNumber[e.G_L_Account_No];
+    const cat = acc ? acc.category : null;
+    if (cat !== 'Expense' && cat !== 'Cost_of_Goods_Sold' && cat !== 'Cost_x0020_of_x0020_Goods_x0020_Sold') return;
+    const cuentaNombre = (e.G_L_Account_Name || acc?.displayName || '').trim();
+    const esNomina = NOMINA_KEYWORDS.some(k => cuentaNombre.toUpperCase().includes(k));
+    costRows.push({
+      empCod, empName: empName(empCod)||empCod,
+      fecha: e.Posting_Date, mes: (e.Posting_Date||'').slice(0,7),
+      cuenta: e.G_L_Account_No, cuentaNombre,
+      tipo: esNomina ? 'Nómina' : 'Otro Costo Directo',
+      monto: debit,
+    });
+  });
+
+  // ── Agregación por empleado+mes (une facturación y costo) ──
+  porEmpMes = {};
+  function ensure(empCod, mes){
+    const k = empCod+'||'+mes;
+    if (!porEmpMes[k]) porEmpMes[k] = { empCod, empName: empName(empCod)||empCod, mes, horas:0, sinIVA:0, conIVA:0, costoNomina:0, costoOtro:0, facturas:new Set() };
+    return porEmpMes[k];
+  }
+  cruceRows.forEach(r => {
+    if (!r.empCod) return;
+    const e = ensure(r.empCod, r.mes || 'Sin fecha');
+    e.horas += r.qty; e.sinIVA += r.montoSinIVA; e.conIVA += r.montoConIVA;
+    if (r.factura!=='—') e.facturas.add(r.factura);
+  });
+  costRows.forEach(r => {
+    const e = ensure(r.empCod, r.mes || 'Sin fecha');
+    if (r.tipo==='Nómina') e.costoNomina += r.monto; else e.costoOtro += r.monto;
+  });
+
+  // ── Agregación fina empleado+mes+proyecto (para el filtro por Proyecto) ──
+  // La nómina no se registra por proyecto en BC (es un asiento mensual por persona), así que
+  // para "ver por proyecto" prorrateamos el costo del mes de cada empleado entre los proyectos
+  // en que trabajó ESE mes, según su participación en horas. Es una atribución, no un dato exacto.
+  porEmpMesJob = {};
+  cruceRows.forEach(r => {
+    if (!r.empCod) return;
+    const k = `${r.empCod}||${r.mes||'Sin fecha'}||${r.job}`;
+    if (!porEmpMesJob[k]) porEmpMesJob[k] = { empCod:r.empCod, empName:r.empName, mes:r.mes||'Sin fecha', job:r.job, horas:0, sinIVA:0, conIVA:0, costoNomina:0, costoOtro:0, facturas:new Set() };
+    const e = porEmpMesJob[k];
+    e.horas += r.qty; e.sinIVA += r.montoSinIVA; e.conIVA += r.montoConIVA;
+    if (r.factura!=='—') e.facturas.add(r.factura);
+  });
+  Object.values(porEmpMesJob).forEach(e => {
+    const totalMes = porEmpMes[e.empCod+'||'+e.mes];
+    const share = totalMes && totalMes.horas>0 ? e.horas/totalMes.horas : 0;
+    e.costoNomina = (totalMes?.costoNomina||0) * share;
+    e.costoOtro = (totalMes?.costoOtro||0) * share;
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+//  FORMATO
+// ════════════════════════════════════════════════════════════
+function fc(v){
+  if (v==null || isNaN(v)) return '—';
+  const val = showUSD && fxRate ? v/fxRate : v;
+  const pfx = showUSD ? 'USD ' : '$';
+  const sign = val<0 ? '-' : '';
+  const abs = Math.abs(val);
+  if (abs >= 1000000) return sign+pfx+(abs/1000000).toFixed(2)+'M';
+  if (abs >= 1000) return sign+pfx+(abs/1000).toFixed(1)+'K';
+  return sign+pfx+new Intl.NumberFormat('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}).format(abs);
+}
+function fmt(v){
+  if (v==null || isNaN(v)) return '—';
+  const val = showUSD && fxRate ? v/fxRate : v;
+  const pfx = showUSD ? 'USD ' : '$';
+  const sign = val<0 ? '-' : '';
+  return sign+pfx+new Intl.NumberFormat('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Math.abs(val));
+}
+function fd(d){ if(!d) return '—'; return new Date(d).toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'}); }
+
+async function fetchFX(){
+  try{ const r = await fetch('https://api.exchangerate-api.com/v4/latest/USD'); const d = await r.json(); fxRate = d.rates?.MXN||null; }
+  catch(e){ try{ const r2 = await fetch('https://open.er-api.com/v6/latest/USD'); const d2 = await r2.json(); fxRate = d2.rates?.MXN||null; }catch(e2){ fxRate=null; } }
+  if (fxRate){ const b=qs('fx-badge'); b.textContent = `1 USD = $${fxRate.toFixed(2)} MXN`; b.style.display='inline-block'; }
+}
+function toggleUSD(){
+  if (!showUSD){ if (!fxRate){ alert('Cotización aún cargando, intentá en un momento.'); return; } showUSD=true; qs('btn-usd').textContent='🇲🇽 Ver en MXN'; qs('btn-usd').className='btn btn-green'; }
+  else { showUSD=false; qs('btn-usd').textContent='💵 Ver en USD'; qs('btn-usd').className='btn btn-amber'; }
+  renderAll();
+}
+function toggleTheme(){
+  theme = theme==='dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', theme);
+  qs('btn-theme').textContent = theme==='dark' ? '☀️ Ver en claro' : '🌙 Ver en oscuro';
+  if (firstLoadDone) renderAll();
+}
+function isLightTheme(){ return document.documentElement.getAttribute('data-theme')==='light'; }
+function chartTextColor(){ return isLightTheme() ? '#475569' : '#94a3b8'; }
+function chartGridColor(){ return isLightTheme() ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.04)'; }
+
+// ════════════════════════════════════════════════════════════
+//  FILTROS (empleado / mes)
+// ════════════════════════════════════════════════════════════
+function empleadosDisponibles(){
+  const set = new Set();
+  Object.values(porEmpMes).forEach(e => set.add(e.empCod));
+  return [...set].map(c => ({ codigo:c, nombre: empName(c)||c })).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+}
+function poblarSelectEmpleado(){
+  const search = (qs('f-emp-buscar').value||'').trim().toUpperCase();
+  const sel = qs('f-emp');
+  const prev = sel.value;
+  const emps = empleadosDisponibles().filter(e => !search || e.nombre.toUpperCase().includes(search) || e.codigo.toUpperCase().includes(search));
+  sel.innerHTML = '<option value="all">Todos los empleados</option>' + emps.map(e=>`<option value="${e.codigo}">${e.nombre} (${e.codigo})</option>`).join('');
+  if ([...sel.options].some(o=>o.value===prev)) sel.value = prev;
+  onFiltroChange();
+}
+function poblarSelectMes(){
+  const meses = [...new Set(Object.values(porEmpMes).map(e=>e.mes))].filter(m=>m && m!=='Sin fecha').sort();
+  const sel = qs('f-mes');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="all">Todos los meses</option>' + meses.map(m=>`<option value="${m}">${m}</option>`).join('');
+  if ([...sel.options].some(o=>o.value===prev)) sel.value = prev;
+}
+function poblarSelectProyecto(){
+  const jobs = [...new Set(Object.values(porEmpMesJob).map(e=>e.job))].filter(Boolean).sort();
+  const sel = qs('f-proy');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="all">Todos los proyectos</option>' + jobs.map(j=>`<option value="${j}">${j}</option>`).join('');
+  if ([...sel.options].some(o=>o.value===prev)) sel.value = prev;
+}
+function onYearChange(){ cargarTodo(qs('f-year').value, { skipStatic:true }); }
+function onFiltroChange(){ renderAll(); }
+
+// ════════════════════════════════════════════════════════════
+//  RENDER
+// ════════════════════════════════════════════════════════════
+function filasFiltradas(){
+  const emp = qs('f-emp').value, mes = qs('f-mes').value, proy = qs('f-proy').value;
+  if (proy === 'all'){
+    return Object.values(porEmpMes).filter(e => (emp==='all'||e.empCod===emp) && (mes==='all'||e.mes===mes));
+  }
+  // Con proyecto seleccionado usamos la agregación fina (costo prorrateado por horas del mes)
+  return Object.values(porEmpMesJob).filter(e => (emp==='all'||e.empCod===emp) && (mes==='all'||e.mes===mes) && e.job===proy);
+}
+
+function renderKPIs(filas){
+  const horas = filas.reduce((s,e)=>s+e.horas,0);
+  const sinIVA = filas.reduce((s,e)=>s+e.sinIVA,0);
+  const conIVA = filas.reduce((s,e)=>s+e.conIVA,0);
+  const costoNomina = filas.reduce((s,e)=>s+e.costoNomina,0);
+  const costoOtro = filas.reduce((s,e)=>s+e.costoOtro,0);
+  const costoTotal = costoNomina + costoOtro;
+  const margen = sinIVA - costoTotal;
+  const margenPct = sinIVA>0 ? (margen/sinIVA*100) : null;
+
+  qs('k-horas').textContent = horas.toLocaleString('es-MX',{maximumFractionDigits:1});
+  qs('k-sin-iva').textContent = fc(sinIVA);
+  qs('k-con-iva').textContent = fc(conIVA);
+  qs('k-costo-nomina').textContent = fc(costoNomina);
+  qs('k-costo-otro').textContent = fc(costoOtro);
+  qs('k-margen').textContent = fc(margen);
+  qs('k-margen').style.color = margen>=0 ? 'var(--green)' : 'var(--red)';
+  qs('k-margen-pct').textContent = margenPct!=null ? `${margenPct.toFixed(1)}% de margen` : 'sin facturación';
+  const moneda = showUSD ? 'USD' : 'MXN';
+  qs('k-moneda-1').textContent = moneda; qs('k-moneda-2').textContent = moneda;
+}
+
+function renderTablaAgregada(filas){
+  const emp = qs('f-emp').value, mes = qs('f-mes').value, proy = qs('f-proy').value;
+  const wrap = qs('tbl-agregada-wrap');
+  const titulo = qs('tabla-agregada-titulo');
+  const sub = qs('tabla-agregada-sub');
+
+  if (!filas.length){
+    wrap.innerHTML = '<div class="empty">Sin datos para los filtros seleccionados</div>';
+    sub.textContent = '';
+    return;
+  }
+
+  const showEmpCol = emp==='all';
+  const showProyCol = proy==='all'; // si ya filtraste por un proyecto puntual, no hace falta repetirlo en cada fila
+
+  const partesTitulo = [];
+  if (emp!=='all') partesTitulo.push(empName(emp)); else partesTitulo.push('Todos los empleados');
+  if (proy!=='all') partesTitulo.push(proy);
+  if (mes!=='all') partesTitulo.push(mes);
+  titulo.textContent = 'Rentabilidad — ' + partesTitulo.join(' · ');
+
+  let filasOrdenadas;
+  if (emp==='all'){
+    filasOrdenadas = [...filas].sort((a,b)=> (b.sinIVA-b.costoNomina-b.costoOtro) - (a.sinIVA-a.costoNomina-a.costoOtro));
+  } else {
+    filasOrdenadas = [...filas].sort((a,b)=> a.mes.localeCompare(b.mes) || (a.job||'').localeCompare(b.job||''));
+  }
+  sub.textContent = `${filasOrdenadas.length} registros`;
+  if (proy!=='all') sub.textContent += ' · Nómina/Otro Costo prorrateados por participación de horas en el mes (ver nota abajo)';
+
+  let totHoras=0, totSin=0, totCon=0, totNom=0, totOtro=0;
+  const rowsHtml = filasOrdenadas.map(e=>{
+    const costoTotal = e.costoNomina+e.costoOtro;
+    const margen = e.sinIVA - costoTotal;
+    const margenPct = e.sinIVA>0 ? (margen/e.sinIVA*100) : null;
+    totHoras+=e.horas; totSin+=e.sinIVA; totCon+=e.conIVA; totNom+=e.costoNomina; totOtro+=e.costoOtro;
+    return `<tr>
+      ${showEmpCol ? `<td class="bold" style="color:var(--a3)">${e.empName}</td><td class="mono">${e.empCod}</td>` : ''}
+      <td class="mono">${e.mes}</td>
+      ${showProyCol ? `<td style="color:var(--purple);font-size:11px">${e.job||'—'}</td>` : ''}
+      <td class="hrs">${e.horas.toFixed(2)}</td>
+      <td class="amt">${fmt(e.sinIVA)}</td>
+      <td class="amt" style="color:var(--t3)">${fmt(e.conIVA-e.sinIVA)}</td>
+      <td class="amt green">${fmt(e.conIVA)}</td>
+      <td class="amt" style="color:var(--red)">${fmt(e.costoNomina)}</td>
+      <td class="amt" style="color:var(--amber)">${fmt(e.costoOtro)}</td>
+      <td class="amt" style="color:${margen>=0?'var(--green)':'var(--red)'}">${fmt(margen)}</td>
+      <td class="amt" style="color:${margen>=0?'var(--green)':'var(--red)'}">${margenPct!=null?margenPct.toFixed(1)+'%':'—'}</td>
+    </tr>`;
+  }).join('');
+
+  const totCosto = totNom+totOtro, totMargen = totSin-totCosto, totMargenPct = totSin>0?(totMargen/totSin*100):null;
+  const colspanTotal = showEmpCol ? 3 : 1; // Empleado+Código+Mes, o sólo Mes
+
+  wrap.innerHTML = `<table>
+    <thead><tr>
+      ${showEmpCol ? '<th>Empleado</th><th>Código</th>' : ''}
+      <th>Mes</th>${showProyCol ? '<th>Proyecto</th>' : ''}<th style="text-align:right">Horas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th>
+      <th style="text-align:right">Nómina</th><th style="text-align:right">Otro Costo</th><th style="text-align:right">Margen</th><th style="text-align:right">Margen %</th>
+    </tr></thead>
+    <tbody>${rowsHtml}</tbody>
+    <tfoot><tr>
+      <td colspan="${colspanTotal}">TOTAL</td>${showProyCol ? '<td></td>' : ''}
+      <td class="amt">${totHoras.toFixed(2)}</td><td class="amt">${fmt(totSin)}</td><td class="amt">${fmt(totCon-totSin)}</td><td class="amt">${fmt(totCon)}</td>
+      <td class="amt" style="color:var(--red)">${fmt(totNom)}</td><td class="amt" style="color:var(--amber)">${fmt(totOtro)}</td>
+      <td class="amt" style="color:${totMargen>=0?'var(--green)':'var(--red)'}">${fmt(totMargen)}</td>
+      <td class="amt" style="color:${totMargen>=0?'var(--green)':'var(--red)'}">${totMargenPct!=null?totMargenPct.toFixed(1)+'%':'—'}</td>
+    </tr></tfoot>
+  </table>${proy!=='all' ? '<div class="note" style="padding:10px 13px 4px">La nómina se registra por empleado y mes, no por proyecto. Estos valores prorratean el costo mensual de cada persona según su participación en horas entre los proyectos en que trabajó ese mes — es una atribución razonable, no un dato exacto de BC.</div>' : ''}`;
+}
+
+function renderDetalle(){
+  const emp = qs('f-emp').value, proy = qs('f-proy').value;
+  const panel = qs('detalle-empleado');
+  if (emp==='all' && proy==='all'){ panel.style.display='none'; return; }
+  panel.style.display='block';
+
+  const modoProyectoPuro = emp==='all' && proy!=='all'; // varios empleados, un solo proyecto: costo sólo se puede prorratear
+
+  let factDetalle = cruceRows.filter(r=>r.empCod);
+  if (emp!=='all') factDetalle = factDetalle.filter(r=>r.empCod===emp);
+  if (proy!=='all') factDetalle = factDetalle.filter(r=>r.job===proy);
+  factDetalle = factDetalle.sort((a,b)=> new Date(a.fecha)-new Date(b.fecha));
+
+  // ── Chart evolución mensual ──
+  const toDisplay = v => showUSD && fxRate ? v/fxRate : v;
+  const meses = [...new Set(factDetalle.map(r=>r.mes))].filter(Boolean).sort();
+  const facPorMes = meses.map(m => factDetalle.filter(r=>r.mes===m).reduce((s,r)=>s+r.montoSinIVA,0));
+
+  let costoDetalleRaw = [];   // sólo tiene sentido cuando hay UN empleado puntual (asientos GL reales)
+  let costoAtribuido = [];    // cuando el modo es por-proyecto-puro (varios empleados, costo prorrateado)
+  let costoPorMes, costoNominaTot, costoOtroTot;
+
+  if (!modoProyectoPuro){
+    // Empleado seleccionado (con o sin filtro de proyecto adicional sobre la facturación).
+    // El costo de nómina de una persona no se registra por proyecto, así que se muestra completo
+    // (no se filtra por "proy") — si hay un proyecto elegido, se aclara con una nota.
+    costoDetalleRaw = costRows.filter(r=>r.empCod===emp).sort((a,b)=> new Date(a.fecha)-new Date(b.fecha));
+    costoPorMes = meses.map(m => costoDetalleRaw.filter(r=>r.mes===m).reduce((s,r)=>s+r.monto,0));
+    costoNominaTot = costoDetalleRaw.filter(r=>r.tipo==='Nómina').reduce((s,r)=>s+r.monto,0);
+    costoOtroTot = costoDetalleRaw.filter(r=>r.tipo!=='Nómina').reduce((s,r)=>s+r.monto,0);
+  } else {
+    // Sólo proyecto (todos los empleados): costo atribuido vía porEmpMesJob (prorrateado por horas/mes).
+    costoAtribuido = Object.values(porEmpMesJob).filter(e=>e.job===proy).sort((a,b)=> a.mes.localeCompare(b.mes) || b.horas-a.horas);
+    costoPorMes = meses.map(m => costoAtribuido.filter(e=>e.mes===m).reduce((s,e)=>s+e.costoNomina+e.costoOtro,0));
+    costoNominaTot = costoAtribuido.reduce((s,e)=>s+e.costoNomina,0);
+    costoOtroTot = costoAtribuido.reduce((s,e)=>s+e.costoOtro,0);
+  }
+
+  const margenPorMes = meses.map((m,i) => facPorMes[i]-costoPorMes[i]);
+  mkChart('ch-evolucion','bar',meses,[
+    { type:'bar', label:'Facturación (sin IVA)', data: facPorMes.map(toDisplay), backgroundColor:'#10b98199', borderColor:'#10b981', borderWidth:1 },
+    { type:'bar', label:'Costo Directo', data: costoPorMes.map(toDisplay), backgroundColor:'#ef444499', borderColor:'#ef4444', borderWidth:1 },
+    { type:'line', label:'Margen', data: margenPorMes.map(toDisplay), borderColor:'#60a5fa', backgroundColor:'#60a5fa', tension:.3, yAxisID:'y' },
+  ], { plugins:{legend:{position:'bottom',labels:{color:chartTextColor(),font:{size:10}}}} });
+
+  mkChart('ch-composicion-costo','doughnut',['Nómina','Otro Costo Directo'],
+    [{ data:[toDisplay(costoNominaTot), toDisplay(costoOtroTot)], backgroundColor:['#ef4444','#f59e0b'], borderWidth:0 }],
+    { plugins:{legend:{position:'bottom',labels:{color:chartTextColor(),font:{size:11}}}} });
+
+  // ── Tabla facturación detalle ──
+  let tituloFact = 'Facturación — Detalle (horas → factura)';
+  if (emp!=='all' && proy!=='all') tituloFact = `Facturación — ${empName(emp)} en ${proy}`;
+  else if (emp!=='all') tituloFact = `Facturación — ${empName(emp)}`;
+  else if (proy!=='all') tituloFact = `Facturación — Proyecto ${proy} (todos los empleados)`;
+  qs('fact-detalle-titulo').textContent = tituloFact;
+
+  qs('tbl-fact-detalle-head').innerHTML = `<tr>
+    ${emp==='all' ? '<th>Empleado</th>' : ''}
+    <th>Período</th><th>Fecha Factura</th><th>Rezago</th>
+    ${proy==='all' ? '<th>Proyecto</th>' : ''}
+    <th>Tarea</th><th style="text-align:right">Horas</th><th>N° Factura</th><th>Cliente</th>
+    <th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th>
+  </tr>`;
+  qs('fact-detalle-sub').textContent = `${factDetalle.length} registros de horas`;
+  let tS=0,tC=0,tH=0;
+  const totalColsFact = 10 + (emp==='all'?1:0) + (proy==='all'?1:0);
+  qs('tbl-fact-detalle').innerHTML = factDetalle.map(r=>{
+    tH+=r.qty; tS+=r.montoSinIVA; tC+=r.montoConIVA;
+    let rezago = '—';
+    if (r.fechaFactura && r.fecha){
+      const dias = Math.round((new Date(r.fechaFactura) - new Date(r.fecha)) / 86400000);
+      rezago = `<span style="color:${dias>30?'var(--red)':dias>0?'var(--amber)':'var(--t3)'}">${dias} d</span>`;
+    }
+    const periodoTxt = r.mesFuente==='tarea' ? (r.mesLabel || r.mes) : r.mes;
+    const periodoBadge = r.mesFuente==='tarea' ? '<span class="badge b-purple" style="font-size:9px;margin-left:5px">tarea</span>' : '<span class="badge b-amber" style="font-size:9px;margin-left:5px">estimado</span>';
+    return `<tr>
+      ${emp==='all' ? `<td style="color:var(--a3);font-size:11px">${r.empName}</td>` : ''}
+      <td class="mono" style="font-size:11px">${periodoTxt}${periodoBadge}</td><td class="mono" style="color:var(--t3)">${fd(r.fechaFactura)}</td><td class="mono">${rezago}</td>
+      ${proy==='all' ? `<td style="color:var(--purple);font-size:11px">${r.job}</td>` : ''}<td style="color:var(--t3);font-size:11px">${r.task}</td>
+      <td class="hrs">${r.qty.toFixed(2)}</td>
+      <td>${r.factura!=='—' ? `<span class="badge b-amber">${r.factura}</span>` : '<span style="color:var(--t3)">—</span>'}</td>
+      <td style="font-size:11px;color:var(--t3)">${r.cliente}</td>
+      <td class="amt">${fmt(r.montoSinIVA)}</td><td class="amt" style="color:var(--t3)">${fmt(r.montoConIVA-r.montoSinIVA)}</td><td class="amt green">${fmt(r.montoConIVA)}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="${totalColsFact}" class="empty">Sin registros de horas en el período</td></tr>`;
+  const colspanFactTotal = 4 + (emp==='all'?1:0) + (proy==='all'?1:0); // hasta (incl.) la columna Tarea
+  qs('tbl-fact-detalle-foot').innerHTML = factDetalle.length ? `<tr><td colspan="${colspanFactTotal}">TOTAL</td><td class="amt">${tH.toFixed(2)}</td><td colspan="2"></td><td class="amt">${fmt(tS)}</td><td class="amt">${fmt(tC-tS)}</td><td class="amt">${fmt(tC)}</td></tr>` : '';
+
+  // ── Tabla costo detalle: dos formatos distintos según el modo ──
+  if (!modoProyectoPuro){
+    qs('costo-detalle-titulo').textContent = 'Costos Directos — Detalle (apertura completa)';
+    qs('costo-detalle-sub').textContent = `${costoDetalleRaw.length} asientos · Nómina ${fc(costoNominaTot)} + Otro ${fc(costoOtroTot)}` + (proy!=='all' ? ' · costo total de la persona, no limitado a este proyecto' : '');
+    qs('tbl-costo-detalle-head').innerHTML = '<tr><th>Fecha</th><th>Cuenta</th><th>Nombre de Cuenta</th><th>Tipo</th><th style="text-align:right">Monto</th></tr>';
+    let tCosto=0;
+    qs('tbl-costo-detalle').innerHTML = costoDetalleRaw.map(r=>{
+      tCosto+=r.monto;
+      return `<tr>
+        <td class="mono">${fd(r.fecha)}</td><td class="mono" style="color:var(--t3)">${r.cuenta}</td>
+        <td style="font-size:12px">${r.cuentaNombre}</td>
+        <td><span class="badge ${r.tipo==='Nómina'?'b-purple':'b-amber'}">${r.tipo}</span></td>
+        <td class="amt" style="color:${r.tipo==='Nómina'?'var(--red)':'var(--amber)'}">${fmt(r.monto)}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="5" class="empty">Sin asientos de costo directo en el período</td></tr>';
+    qs('tbl-costo-detalle-foot').innerHTML = costoDetalleRaw.length ? `<tr><td colspan="4">TOTAL</td><td class="amt">${fmt(tCosto)}</td></tr>` : '';
+  } else {
+    qs('costo-detalle-titulo').textContent = 'Costo Atribuido al Proyecto — por Empleado y Mes (prorrateado)';
+    qs('costo-detalle-sub').textContent = `${costoAtribuido.length} registros · Nómina ${fc(costoNominaTot)} + Otro ${fc(costoOtroTot)} · prorrateado por horas`;
+    qs('tbl-costo-detalle-head').innerHTML = '<tr><th>Mes</th><th>Empleado</th><th>Código</th><th style="text-align:right">Horas en el proyecto</th><th style="text-align:right">Nómina Atribuida</th><th style="text-align:right">Otro Costo Atribuido</th><th style="text-align:right">Costo Total</th></tr>';
+    let tCosto=0;
+    qs('tbl-costo-detalle').innerHTML = costoAtribuido.map(e=>{
+      const ct = e.costoNomina+e.costoOtro; tCosto+=ct;
+      return `<tr>
+        <td class="mono">${e.mes}</td><td style="color:var(--a3);font-weight:600">${e.empName}</td><td class="mono" style="color:var(--t3)">${e.empCod}</td>
+        <td class="hrs">${e.horas.toFixed(2)}</td>
+        <td class="amt" style="color:var(--red)">${fmt(e.costoNomina)}</td><td class="amt" style="color:var(--amber)">${fmt(e.costoOtro)}</td>
+        <td class="amt bold">${fmt(ct)}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="7" class="empty">Sin costo atribuido en el período</td></tr>';
+    qs('tbl-costo-detalle-foot').innerHTML = costoAtribuido.length ? `<tr><td colspan="4">TOTAL</td><td class="amt" style="color:var(--red)">${fmt(costoNominaTot)}</td><td class="amt" style="color:var(--amber)">${fmt(costoOtroTot)}</td><td class="amt bold">${fmt(tCosto)}</td></tr>` : '';
+  }
+}
+
+function mkChart(id,type,labels,datasets,opts={}){
+  if (charts[id]) charts[id].destroy();
+  const ctx = qs(id)?.getContext('2d');
+  if (!ctx) return;
+  const base = {
+    responsive:true, maintainAspectRatio:true,
+    scales: type==='doughnut' ? undefined : {
+      x:{grid:{color:chartGridColor()},ticks:{color:chartTextColor(),font:{size:10}}},
+      y:{grid:{color:chartGridColor()},ticks:{color:chartTextColor(),font:{size:10}}},
+    },
+    ...opts,
+    plugins:{legend:{labels:{color:chartTextColor(),font:{size:11}}},...(opts.plugins||{})},
+  };
+  charts[id] = new Chart(ctx,{type,data:{labels,datasets},options:base});
+}
+
+function renderAll(){
+  const filas = filasFiltradas();
+  renderKPIs(filas);
+  renderTablaAgregada(filas);
+  renderDetalle();
+}
+
+// ════════════════════════════════════════════════════════════
+//  CARGA PRINCIPAL
+// ════════════════════════════════════════════════════════════
+async function cargarTodo(year, opts={}){
+  clearError();
+  qs('btn-refresh').disabled = true;
+  setLive('busy','Sincronizando…');
+  try{
+    if (!opts.skipStatic){
+      setLoadingMsg('Verificando conexión con el proxy…');
+      await pingProxy();
+      setLoadingMsg('Autenticando con Azure AD…');
+      await getToken();
+      setLoadingMsg('Cargando empleados (dimensión RECURSO)…');
+      await cargarEmpleados();
+      setLoadingMsg('Cargando plan de cuentas…');
+      await cargarCuentas();
+      setLoadingMsg('Cargando dimensiones de costo directo…');
+      await cargarDimensionSetsRecurso();
+      setLoadingMsg('Cargando períodos de servicio por tarea de proyecto…');
+      await cargarJobTaskLines();
+    }
+    setLoadingMsg(`Cargando horas, facturas y costos ${year==='all'?'(todos los años)':year}…`);
+    await Promise.all([cargarSalesInvoices(year), cargarMovs(year), cargarGLRaw(year)]);
+
+    procesarDatos();
+    poblarSelectEmpleado();
+    poblarSelectMes();
+    poblarSelectProyecto();
+    renderAll();
+    if (!fxRate) fetchFX();
+
+    setLive('on', `BC · Production · ${new Date().toLocaleTimeString('es-MX')}`);
+    if (!firstLoadDone){ qs('app-loading').style.display='none'; qs('app-body').style.display='block'; firstLoadDone=true; }
+  }catch(e){
+    setLive('off','Error de conexión');
+    showError(e.message || String(e));
+    if (!firstLoadDone) qs('loading-msg').textContent = 'No se pudo conectar. Revisá el mensaje de error abajo.';
+  }finally{
+    qs('btn-refresh').disabled = false;
+  }
+}
+function recargar(){ cargarTodo(qs('f-year').value, { skipStatic:false }); }
+
+qs('f-year').value = '2026';
+cargarTodo('2026');
+</script>
+</body>
+</html>

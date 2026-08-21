@@ -1,0 +1,1763 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tesis · Command Center</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1" crossorigin="anonymous"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #080c14;
+  --s1: #0d1220;
+  --s2: #111827;
+  --s3: #1a2235;
+  --border: #1e2d45;
+  --border2: #253550;
+  --a1: #2563eb;
+  --a2: #3b82f6;
+  --a3: #60a5fa;
+  --green: #10b981;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --purple: #8b5cf6;
+  --cyan: #06b6d4;
+  --gray: #64748b;
+  --text: #f1f5f9;
+  --t2: #94a3b8;
+  --t3: #475569;
+  --mono: 'DM Mono', monospace;
+  --sans: 'DM Sans', sans-serif;
+}
+:root[data-theme="light"] {
+  --bg: #f4f6fa;
+  --s1: #ffffff;
+  --s2: #f1f4f9;
+  --s3: #e9edf5;
+  --border: #dde3ee;
+  --border2: #c7cfdf;
+  --text: #0f172a;
+  --t2: #475569;
+  --t3: #8592a8;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; min-height: 100vh; transition: background .2s, color .2s; }
+
+/* ── SIDEBAR ── */
+.sidebar {
+  position: fixed; left: 0; top: 0; bottom: 0; width: 220px;
+  background: var(--s1); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; z-index: 50;
+}
+.sb-logo { padding: 22px 20px 18px; border-bottom: 1px solid var(--border); }
+.sb-logo .name { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+.sb-logo .name span { color: var(--a2); }
+.sb-logo .sub { font-size: 11px; color: var(--t3); margin-top: 2px; font-family: var(--mono); }
+.sb-nav { flex: 1; padding: 12px 10px; overflow-y: auto; }
+.nav-section { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--t3); padding: 12px 10px 6px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--t2); transition: all 0.15s; margin-bottom: 2px; }
+.nav-item:hover { background: var(--s3); color: var(--text); }
+.nav-item.active { background: rgba(37,99,235,0.15); color: var(--a3); }
+.nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+.sb-footer { padding: 14px 20px; border-top: 1px solid var(--border); font-size: 11px; color: var(--t3); font-family: var(--mono); }
+.live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; }
+.live-dot.on { background: var(--green); animation: pulse 2s infinite; }
+.live-dot.off { background: var(--red); }
+.live-dot.busy { background: var(--amber); animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
+
+/* ── MAIN ── */
+.main { margin-left: 220px; min-height: 100vh; }
+.topbar { position: sticky; top: 0; z-index: 40; background: rgba(8,12,20,0.9); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); padding: 14px 28px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.page-title { font-size: 18px; font-weight: 600; }
+.topbar-right { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; border: none; font-family: var(--sans); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.btn-primary { background: var(--a1); color: #fff; }
+.btn-primary:hover { background: var(--a2); }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+.btn-ghost { background: transparent; color: var(--t2); border: 1px solid var(--border); }
+.btn-ghost:hover { border-color: var(--a2); color: var(--text); }
+.btn-amber { background: transparent; color: var(--amber); border: 1px solid rgba(245,158,11,.3); }
+.btn-green { background: transparent; color: var(--green); border: 1px solid rgba(16,185,129,.3); }
+.year-select, select { background: var(--s3); border: 1px solid var(--border2); border-radius: 6px; padding: 7px 12px; font-size: 13px; font-family: var(--mono); color: var(--a3); outline: none; }
+.fx-badge { background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.2); border-radius: 6px; padding: 5px 10px; font-size: 11px; font-family: var(--mono); color: var(--green); display: none; }
+
+/* ── CONTENT ── */
+.content { padding: 24px 28px 48px; }
+.section { display: none; }
+.section.active { display: block; }
+
+/* ── KPI GRID ── */
+.kpi-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 14px; margin-bottom: 22px; }
+.kpi { background: var(--s1); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; position: relative; overflow: hidden; }
+.kpi::after { content:''; position:absolute; top:0; left:0; right:0; height:2px; }
+.kpi.blue::after { background: linear-gradient(90deg,var(--a1),var(--cyan)); }
+.kpi.green::after { background: linear-gradient(90deg,var(--green),#059669); }
+.kpi.amber::after { background: linear-gradient(90deg,var(--amber),#d97706); }
+.kpi.red::after { background: linear-gradient(90deg,var(--red),#dc2626); }
+.kpi.purple::after { background: linear-gradient(90deg,var(--purple),#7c3aed); }
+.kpi.cyan::after { background: linear-gradient(90deg,var(--cyan),var(--a2)); }
+.kpi-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.9px; color: var(--t3); margin-bottom: 8px; }
+.kpi-value { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; line-height: 1; margin-bottom: 4px; }
+.kpi-sub { font-size: 11px; color: var(--t3); }
+.kpi-tag { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 4px; margin-top: 6px; }
+.tag-green { background: rgba(16,185,129,.12); color: var(--green); }
+.tag-red { background: rgba(239,68,68,.12); color: var(--red); }
+.tag-amber { background: rgba(245,158,11,.12); color: var(--amber); }
+.tag-blue { background: rgba(37,99,235,.12); color: var(--a3); }
+
+/* ── GRID LAYOUTS ── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.grid-21 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 16px; }
+.grid-12 { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; margin-bottom: 16px; }
+
+/* ── CARDS ── */
+.card { background: var(--s1); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 16px; }
+.card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.card-header h3 { font-size: 13px; font-weight: 600; }
+.card-header .sub { font-size: 11px; color: var(--t3); }
+.card-body { padding: 20px; }
+
+/* ── CHARTS ── */
+.chart-card { background: var(--s1); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+.chart-card h3 { font-size: 13px; font-weight: 600; color: var(--t2); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 16px; }
+.chart-card canvas { max-height: 260px; }
+.charts-row { display: grid; gap: 16px; margin-bottom: 16px; }
+.charts-row.c2 { grid-template-columns: 2fr 1fr; }
+.charts-row.c3 { grid-template-columns: 1fr 1fr 1fr; }
+
+/* ── TABLES ── */
+.tbl-wrap { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead th { position: sticky; top: 0; z-index: 1; text-align: left; padding: 10px 14px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px; color: var(--t3); background: var(--s2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--s3); }
+tbody td { padding: 10px 14px; color: var(--t2); }
+td.bold { color: var(--text); font-weight: 600; }
+td.mono { font-family: var(--mono); font-size: 11px; }
+td.amt { font-family: var(--mono); text-align: right; }
+td.hrs { font-family: var(--mono); text-align: right; color: var(--text); }
+td.green { color: var(--green); }
+td.amber { color: var(--amber); }
+td.red { color: var(--red); }
+td.right { text-align: right; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; }
+.b-green { background: rgba(16,185,129,.12); color: var(--green); }
+.b-amber { background: rgba(245,158,11,.12); color: var(--amber); }
+.b-red { background: rgba(239,68,68,.12); color: var(--red); }
+.b-blue { background: rgba(37,99,235,.12); color: var(--a3); }
+.b-gray { background: rgba(71,85,105,.15); color: var(--t2); }
+
+/* ── BAR CHART INLINE ── */
+.bar-list { padding: 4px 0; }
+.bar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.bar-label { font-size: 11px; color: var(--t2); width: 200px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.bar-track { flex: 1; background: var(--s3); border-radius: 3px; height: 24px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 3px; display: flex; align-items: center; padding-left: 8px; min-width: 4px; transition: width .4s; }
+.bar-fill span { font-size: 10px; font-weight: 600; color: rgba(255,255,255,.85); white-space: nowrap; }
+.bar-meta { font-size: 11px; color: var(--t3); width: 80px; text-align: right; flex-shrink: 0; font-family: var(--mono); }
+
+/* ── RANK LIST ── */
+.rank-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.rank-item:last-child { border-bottom: none; }
+.rank-num { font-size: 11px; color: var(--t3); font-family: var(--mono); width: 20px; text-align: center; flex-shrink: 0; }
+.rank-name { flex: 1; font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-val { font-size: 12px; font-family: var(--mono); color: var(--a3); flex-shrink: 0; }
+.rank-sub { font-size: 10px; color: var(--t3); }
+
+/* ── FILTERS BAR (Detalle Movimientos) ── */
+.filters { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 16px; flex-wrap: wrap; }
+.fg { display: flex; flex-direction: column; gap: 3px; }
+.fg label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px; color: var(--t3); }
+.fg select { min-width: 170px; }
+
+/* ── TABS ── */
+.tabs { display: flex; gap: 2px; flex-wrap: wrap; }
+.tab { padding: 5px 14px; font-size: 12px; font-weight: 500; color: var(--t3); cursor: pointer; border-radius: 6px; border: none; background: transparent; transition: all 0.15s; }
+.tab:hover { color: var(--text); background: var(--s3); }
+.tab.active { color: var(--a3); background: rgba(37,99,235,0.12); }
+
+/* ── PAGER ── */
+.pager { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-top: 1px solid var(--border); font-size: 11px; color: var(--t3); }
+.pager-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+.pager-btn { padding: 3px 9px; border-radius: 5px; border: 1px solid var(--border); background: var(--s2); color: var(--t2); cursor: pointer; font-size: 11px; }
+.pager-btn.on { background: var(--a1); color: #fff; border-color: var(--a1); }
+
+/* ── LOADING / EMPTY / ERROR ── */
+.spinner { width: 28px; height: 28px; border: 2px solid var(--border); border-top-color: var(--a2); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 90px 20px; gap: 14px; color: var(--t3); }
+.loading-state .msg { font-family: var(--mono); font-size: 12px; }
+.empty { padding: 50px; text-align: center; color: var(--t3); font-size: 12px; }
+#app-error { display: none; margin: 0 28px 16px; background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25); border-radius: 10px; padding: 14px 18px; font-size: 12px; color: var(--red); font-family: var(--mono); white-space: pre-wrap; word-break: break-word; }
+#app-body { display: none; }
+
+@media (max-width: 1100px) {
+  .kpi-grid { grid-template-columns: repeat(3,1fr); }
+  .grid-3, .charts-row.c3 { grid-template-columns: 1fr 1fr; }
+  .charts-row.c2 { grid-template-columns: 1fr; }
+  .grid-21, .grid-12, .grid-2 { grid-template-columns: 1fr; }
+  .sidebar { width: 60px; }
+  .sidebar .nav-item span:not(.icon), .sidebar .sb-logo .name, .sidebar .sb-logo .sub, .sidebar .sb-footer, .sidebar .nav-section { display: none; }
+  .main { margin-left: 60px; }
+}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sb-logo">
+    <div class="name">Tesis <span>·</span></div>
+    <div class="sub">Command Center</div>
+  </div>
+  <div class="sb-nav">
+    <div class="nav-section">General</div>
+    <div class="nav-item active" data-sec="overview" onclick="showSection('overview',this)"><span class="icon">📊</span><span>Resumen General</span></div>
+    <div class="nav-section">Operaciones</div>
+    <div class="nav-item" data-sec="proyectos" onclick="showSection('proyectos',this)"><span class="icon">⏱</span><span>Proyectos</span></div>
+    <div class="nav-item" data-sec="movs" onclick="showSection('movs',this)"><span class="icon">🔎</span><span>Detalle Movimientos</span></div>
+    <div class="nav-item" data-sec="ventas" onclick="showSection('ventas',this)"><span class="icon">💰</span><span>Ventas</span></div>
+    <div class="nav-item" data-sec="compras" onclick="showSection('compras',this)"><span class="icon">🛒</span><span>Compras</span></div>
+    <div class="nav-section">Directorio</div>
+    <div class="nav-item" data-sec="clientes" onclick="showSection('clientes',this)"><span class="icon">🏢</span><span>Clientes</span></div>
+    <div class="nav-item" data-sec="proveedores" onclick="showSection('proveedores',this)"><span class="icon">🤝</span><span>Proveedores</span></div>
+    <div class="nav-item" data-sec="empleados" onclick="showSection('empleados',this)"><span class="icon">👤</span><span>Empleados</span></div>
+  </div>
+  <div class="sb-footer">
+    <div><span class="live-dot off" id="live-dot"></span><span id="live-label">BC · Conectando…</span></div>
+    <div style="margin-top:6px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <span id="sesion-email" style="opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+      <span onclick="cerrarSesionYRedirigir()" style="cursor:pointer;text-decoration:underline;flex-shrink:0">Salir</span>
+    </div>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div class="page-title" id="page-title">Resumen General</div>
+    <div class="topbar-right">
+      <select class="year-select" id="f-year" onchange="onYearChange()">
+        <option value="2026">2026</option>
+        <option value="2025">2025</option>
+        <option value="2024">2024</option>
+        <option value="2023">2023</option>
+        <option value="all">Todos</option>
+      </select>
+      <span class="fx-badge" id="fx-badge"></span>
+      <button class="btn btn-ghost" id="btn-iva" onclick="toggleIVA()">IVA: Incluido</button>
+      <button class="btn btn-amber" id="btn-usd" onclick="toggleUSD()">💵 Ver en USD</button>
+      <button class="btn btn-ghost" id="btn-theme" onclick="toggleTheme()">☀️ Ver en claro</button>
+      <button class="btn btn-primary" id="btn-refresh" onclick="recargar()">↻ Actualizar</button>
+    </div>
+  </div>
+
+  <div id="app-error"></div>
+
+  <div id="app-loading" class="loading-state">
+    <div class="spinner"></div>
+    <div class="msg" id="loading-msg">Conectando a Business Central…</div>
+  </div>
+
+  <div class="content" id="app-body">
+
+    <!-- ══ OVERVIEW ══ -->
+    <div class="section active" id="sec-overview">
+      <div class="kpi-grid">
+        <div class="kpi blue">
+          <div class="kpi-label">Facturación Total</div>
+          <div class="kpi-value" id="kpi-ventas-total">—</div>
+          <div class="kpi-sub" id="kpi-ventas-sub">MXN</div>
+          <div class="kpi-tag tag-green" id="kpi-ventas-tag">—</div>
+        </div>
+        <div class="kpi green">
+          <div class="kpi-label">Horas Facturadas</div>
+          <div class="kpi-value" id="kpi-horas-total">—</div>
+          <div class="kpi-sub">registros proyectos</div>
+          <div class="kpi-tag tag-blue" id="kpi-horas-tag">—</div>
+        </div>
+        <div class="kpi amber">
+          <div class="kpi-label">Compras</div>
+          <div class="kpi-value" id="kpi-compras-total">—</div>
+          <div class="kpi-sub" id="kpi-compras-sub">MXN</div>
+          <div class="kpi-tag tag-amber" id="kpi-compras-tag">—</div>
+        </div>
+        <div class="kpi purple">
+          <div class="kpi-label">Facturas Abiertas</div>
+          <div class="kpi-value" id="kpi-abiertas">—</div>
+          <div class="kpi-sub" id="kpi-abiertas-sub">por cobrar</div>
+          <div class="kpi-tag tag-amber">por cobrar</div>
+        </div>
+        <div class="kpi cyan">
+          <div class="kpi-label">Proyectos Activos</div>
+          <div class="kpi-value" id="kpi-proy-activos">—</div>
+          <div class="kpi-sub" id="kpi-proy-sub">facturas generadas</div>
+          <div class="kpi-tag tag-blue" id="kpi-proy-tag">—</div>
+        </div>
+      </div>
+
+      <div class="grid-21">
+        <div class="card">
+          <div class="card-header"><h3>Top Clientes por Facturación</h3><span class="sub">MXN</span></div>
+          <div class="bar-list" style="padding:16px 20px" id="ov-clientes-bars"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Contabilidad</h3></div>
+          <div class="card-body">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div><div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Total Débitos</div><div style="font-size:22px;font-weight:700;color:var(--text);font-family:var(--mono)" id="gl-debitos">—</div></div>
+              <div><div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Total Créditos</div><div style="font-size:22px;font-weight:700;color:var(--green);font-family:var(--mono)" id="gl-creditos">—</div></div>
+              <div style="border-top:1px solid var(--border);padding-top:12px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Asientos GL</div><div style="font-size:22px;font-weight:700;color:var(--a3)" id="gl-count">—</div></div>
+              <div id="gl-balance-badge" style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);border-radius:8px;padding:10px 12px;font-size:11px;color:var(--green)">—</div>
+              <div style="border-top:1px solid var(--border);padding-top:12px;display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <span style="font-size:11px;color:var(--t2)">Gastos operativos (P&amp;L)</span>
+                  <span style="font-family:var(--mono);font-weight:700;color:var(--amber)" id="gl-gastos-op">—</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <span style="font-size:11px;color:var(--t2)">Retiros de socios / dividendos</span>
+                  <span style="font-family:var(--mono);font-weight:700;color:var(--red)" id="gl-retiros-socios">—</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <span style="font-size:11px;color:var(--t2)">Nómina (dentro de gastos operativos)</span>
+                  <span style="font-family:var(--mono);font-weight:700;color:var(--purple)" id="gl-nomina">—</span>
+                </div>
+                <div style="font-size:10px;color:var(--t3)">No son gasto operativo: son movimiento de capital de los socios, separados del P&amp;L.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><h3>Top Proveedores por Compras</h3></div>
+          <div class="bar-list" style="padding:16px 20px" id="ov-proveedores-bars"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Estado de Facturas de Venta</h3></div>
+          <div class="card-body" style="display:flex;align-items:center;justify-content:center;gap:40px;padding:24px;flex-wrap:wrap">
+            <canvas id="chart-estado" style="max-width:160px;max-height:160px"></canvas>
+            <div style="display:flex;flex-direction:column;gap:14px" id="estado-legend"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ PROYECTOS ══ -->
+    <div class="section" id="sec-proyectos">
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+        <div class="kpi blue"><div class="kpi-label">Horas Totales</div><div class="kpi-value" id="pj-horas">—</div><div class="kpi-sub" id="pj-horas-sub">registros Usage</div></div>
+        <div class="kpi green"><div class="kpi-label">Facturado Proyectos</div><div class="kpi-value" id="pj-facturado">—</div><div class="kpi-sub">MXN · Sale entries</div></div>
+        <div class="kpi amber"><div class="kpi-label">Empleados Activos</div><div class="kpi-value" id="pj-empleados">—</div><div class="kpi-sub">con horas registradas</div></div>
+        <div class="kpi purple"><div class="kpi-label">Proyectos Activos</div><div class="kpi-value" id="pj-proyectos">—</div><div class="kpi-sub" id="pj-proyectos-sub">facturas generadas</div></div>
+      </div>
+
+      <div class="grid-21">
+        <div class="card">
+          <div class="card-header"><h3>Top 15 Empleados por Horas Facturadas</h3></div>
+          <div class="bar-list" style="padding:16px 20px" id="emp-bars"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Horas por Proyecto</h3></div>
+          <div class="card-body"><div class="rank-list" id="proy-rank"></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Detalle Facturas de Venta — Proyectos</h3></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Número</th><th>Cliente</th><th>Fecha</th><th>Vencimiento</th><th style="text-align:right">Total MXN</th><th>Estado</th></tr></thead>
+            <tbody id="tbl-facturas-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ DETALLE MOVIMIENTOS (MovsProyecto Usage/Sale) ══ -->
+    <div class="section" id="sec-movs">
+      <div class="filters">
+        <div class="fg"><label>Empleado</label><select id="f-emp" onchange="aplicarFiltrosMovs()"><option value="all">Todos</option></select></div>
+        <div class="fg"><label>Proyecto (Job)</label><select id="f-job" onchange="aplicarFiltrosMovs()"><option value="all">Todos</option></select></div>
+        <div class="fg"><label>Vista</label>
+          <select id="f-tipo" onchange="aplicarFiltrosMovs()">
+            <option value="all">Usage + Sale</option>
+            <option value="usage">Solo Usage (horas)</option>
+            <option value="sale">Solo Sale (facturación)</option>
+          </select>
+        </div>
+        <button class="btn btn-ghost" onclick="exportCSV()">⬇ CSV</button>
+      </div>
+
+      <div class="kpis kpi-grid" style="grid-template-columns:repeat(5,1fr)">
+        <div class="kpi blue"><div class="kpi-label">Horas Totales</div><div class="kpi-value" id="k-hrs">—</div><div class="kpi-sub">registros Usage</div></div>
+        <div class="kpi green"><div class="kpi-label">Importe Facturado</div><div class="kpi-value" id="k-amt">—</div><div class="kpi-sub" id="k-cur">Sale · MXN</div></div>
+        <div class="kpi amber"><div class="kpi-label">Empleados</div><div class="kpi-value" id="k-emps">—</div><div class="kpi-sub">con horas</div></div>
+        <div class="kpi purple"><div class="kpi-label">Proyectos</div><div class="kpi-value" id="k-jobs">—</div><div class="kpi-sub">activos</div></div>
+        <div class="kpi cyan"><div class="kpi-label">Facturas</div><div class="kpi-value" id="k-facs">—</div><div class="kpi-sub">generadas</div></div>
+      </div>
+
+      <div class="charts-row c2">
+        <div class="chart-card"><h3>Horas por Mes y Empleado</h3><canvas id="ch-monthly"></canvas></div>
+        <div class="chart-card"><h3>Distribución de Horas por Empleado</h3><canvas id="ch-donut"></canvas></div>
+      </div>
+      <div class="charts-row c3">
+        <div class="chart-card"><h3>Top Empleados — Horas</h3><canvas id="ch-emp-hrs"></canvas></div>
+        <div class="chart-card"><h3>Top Empleados — Importe Facturado</h3><canvas id="ch-emp-amt"></canvas></div>
+        <div class="chart-card"><h3>Horas por Proyecto</h3><canvas id="ch-jobs"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3 id="tbl-title">Detalle</h3>
+          <div class="tabs">
+            <button class="tab active" onclick="setTab(this,'cruce')">Empleado → Factura</button>
+            <button class="tab" onclick="setTab(this,'usage')">Horas (Usage)</button>
+            <button class="tab" onclick="setTab(this,'sale')">Ventas (Sale)</button>
+            <button class="tab" onclick="setTab(this,'emp-resumen')">Resumen Empleados</button>
+            <button class="tab" onclick="setTab(this,'job-resumen')">Resumen Proyectos</button>
+          </div>
+        </div>
+        <div id="tbl-body"></div>
+      </div>
+    </div>
+
+    <!-- ══ VENTAS ══ -->
+    <div class="section" id="sec-ventas">
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+        <div class="kpi blue"><div class="kpi-label">Total Facturado</div><div class="kpi-value" id="vt-total">—</div><div class="kpi-sub" id="vt-sub">MXN</div></div>
+        <div class="kpi green"><div class="kpi-label">Cobradas</div><div class="kpi-value" id="vt-pagadas">—</div><div class="kpi-sub">facturas pagadas</div></div>
+        <div class="kpi amber"><div class="kpi-label">Por Cobrar</div><div class="kpi-value" id="vt-abiertas">—</div><div class="kpi-sub">facturas abiertas</div></div>
+        <div class="kpi red"><div class="kpi-label">Cliente #1</div><div class="kpi-value" style="font-size:14px" id="vt-top-cliente">—</div><div class="kpi-sub" id="vt-top-cliente-sub">—</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Facturas de Venta</h3><span class="sub">Subtotal, IVA y Total siempre visibles — el toggle de IVA sólo afecta al KPI</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>N°</th><th>Cliente</th><th>Fecha</th><th>Vencimiento</th><th style="text-align:right">Subtotal</th><th style="text-align:right">IVA</th><th style="text-align:right">Total</th><th>Estado</th></tr></thead>
+            <tbody id="tbl-ventas-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ COMPRAS ══ -->
+    <div class="section" id="sec-compras">
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+        <div class="kpi amber"><div class="kpi-label">Total Compras</div><div class="kpi-value" id="cp-total">—</div><div class="kpi-sub" id="cp-sub">MXN</div></div>
+        <div class="kpi blue"><div class="kpi-label">Facturas</div><div class="kpi-value" id="cp-facturas">—</div><div class="kpi-sub">facturas de compra</div></div>
+        <div class="kpi purple"><div class="kpi-label">Proveedor #1</div><div class="kpi-value" style="font-size:13px" id="cp-top-prov">—</div><div class="kpi-sub" id="cp-top-prov-sub">—</div></div>
+        <div class="kpi red"><div class="kpi-label">Retiros de Socios</div><div class="kpi-value" id="cp-retiros">—</div><div class="kpi-sub">no son gasto operativo</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Top Proveedores por Gasto</h3></div>
+        <div class="bar-list" style="padding:20px" id="compras-bars"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Movimientos en Cuentas de Socios / Dividendos</h3><span class="sub">Detectados por cuenta contable (CUENTA ACCIONISTA / DIVIDENDOS) — no forman parte de los gastos</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Fecha</th><th>Cuenta</th><th>Descripción</th><th style="text-align:right">Monto</th></tr></thead>
+            <tbody id="tbl-retiros-socios"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Facturas de Compra</h3></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>N°</th><th>Proveedor</th><th>Fecha</th><th>Vencimiento</th><th style="text-align:right">Subtotal</th><th style="text-align:right">IVA</th><th style="text-align:right">Total</th><th>Estado</th></tr></thead>
+            <tbody id="tbl-compras-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ CLIENTES ══ -->
+    <div class="section" id="sec-clientes">
+      <div class="card">
+        <div class="card-header"><h3>Directorio de Clientes</h3><span class="sub" id="clientes-count">—</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Cliente</th><th>Ciudad</th><th>País</th></tr></thead>
+            <tbody id="tbl-clientes"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ PROVEEDORES ══ -->
+    <div class="section" id="sec-proveedores">
+      <div class="card">
+        <div class="card-header"><h3>Ranking de Proveedores por Compras</h3><span class="sub" id="proveedores-count">—</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>#</th><th>Proveedor</th><th style="text-align:right">Total Comprado</th><th>Facturas</th></tr></thead>
+            <tbody id="tbl-proveedores"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ EMPLEADOS ══ -->
+    <div class="section" id="sec-empleados">
+      <div class="kpi-grid" style="grid-template-columns:repeat(5,1fr)">
+        <div class="kpi blue"><div class="kpi-label">Total en Dimensión RECURSO</div><div class="kpi-value" id="emp-total-dim">—</div><div class="kpi-sub">códigos registrados</div></div>
+        <div class="kpi green"><div class="kpi-label">Activos en el período</div><div class="kpi-value" id="emp-activos">—</div><div class="kpi-sub">con horas facturadas</div></div>
+        <div class="kpi amber"><div class="kpi-label">Líder en Horas</div><div class="kpi-value" style="font-size:13px" id="emp-lider">—</div><div class="kpi-sub" id="emp-lider-sub">—</div></div>
+        <div class="kpi red"><div class="kpi-label">Nómina Total</div><div class="kpi-value" id="emp-nomina-total">—</div><div class="kpi-sub" id="emp-nomina-sub">—</div></div>
+        <div class="kpi purple"><div class="kpi-label">Costo Directo Total</div><div class="kpi-value" id="emp-costo-total">—</div><div class="kpi-sub">nómina + outsourcing/maquila</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3>Facturación Detallada por Empleado</h3>
+          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+            <div class="fg"><label>Buscar empleado</label><input type="text" id="f-emp-search" placeholder="Nombre o código…" oninput="aplicarFiltrosEmpDetalle()" style="min-width:190px"></div>
+            <div class="fg"><label>Agrupar por</label>
+              <select id="f-emp-group" onchange="aplicarFiltrosEmpDetalle()">
+                <option value="total">Empleado (total del período)</option>
+                <option value="mes">Empleado + Mes</option>
+                <option value="factura">Empleado + Factura</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="sub" style="padding:0 20px 10px;color:var(--t3);font-size:11px">Costo Nómina y Otro Costo Directo (outsourcing/maquila) salen de asientos contables etiquetados con la dimensión RECURSO de cada persona — no disponibles en modo "Empleado + Factura", ya que la nómina no se liga a una factura puntual.</div>
+        <div class="tbl-wrap" id="tbl-emp-detalle-wrap"></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><h3>Ranking por Horas — Período</h3></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Empleado</th><th>Código</th><th style="text-align:right">Horas</th></tr></thead>
+              <tbody id="tbl-emp-horas"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Directorio Completo (dimensión RECURSO)</h3></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Código</th><th>Nombre</th></tr></thead>
+              <tbody id="tbl-emp-dir"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /app-body -->
+</div><!-- /main -->
+
+<script>
+// ════════════════════════════════════════════════════════════
+//  TESIS · COMMAND CENTER — Datos en vivo desde Business Central
+//  via proxy Railway (bc-proxy-tesis). Sin valores hardcodeados.
+// ════════════════════════════════════════════════════════════
+
+// ── CONFIG ──────────────────────────────────────────────────
+const PROXY = 'https://bc-proxy-tesis-production.up.railway.app';
+const API_KEY = 'A9L-ySuPiO-uy8o0ZzOfj3Bi7igRyMD2NsyRWwwesks';
+const TENANT_ID = '12fb0059-aa40-4564-97db-c6ffc7d7543d';
+const COMPANY_URL_NAME = "My%20Company";
+const V2_BASE = `https://api.businesscentral.dynamics.com/v2.0/${TENANT_ID}/Production/api/v2.0`;
+const ODATA_BASE = `https://api.businesscentral.dynamics.com/v2.0/${TENANT_ID}/Production/ODataV4/Company('${COMPANY_URL_NAME}')`;
+const COLORS = ['#4f7cff','#22d3a0','#f59e0b','#f87171','#7c5cfc','#06b6d4','#ec4899','#84cc16','#f97316','#a78bfa','#38bdf8','#fb923c'];
+const STATUS_COLOR = { Paid: '#10b981', Open: '#f59e0b', Draft: '#60a5fa', Canceled: '#64748b' };
+const STATUS_LABEL = { Paid: 'Pagadas', Open: 'Abiertas', Draft: 'Borrador', Canceled: 'Canceladas' };
+
+// ── STATE ───────────────────────────────────────────────────
+let TOKEN = null, TOKEN_EXP = 0;
+let companyId = null;
+let empleadosMap = {};      // código RECURSO → nombre
+let customersRaw = [];
+let vendorsRaw = [];
+let accountsRaw = [];       // plan de cuentas (para clasificar gastos vs retiros de socios)
+let accountsByNumber = {};
+let salesInvoices = [];
+let purchaseInvoices = [];
+let glEntries = [];
+let glRawEntries = [];      // G_LEntries (tabla nativa, con Dimension_Set_ID) — nómina/costo directo por empleado
+let dimSetToRecurso = {};   // Dimension_Set_ID → código RECURSO (empleado)
+let rawMovs = [];
+let usageRows = [], saleRows = [], cruceRows = [];
+let DATA = {};               // agregados calculados
+let fxRate = null, showUSD = false;
+let showIVA = true;          // true = montos con IVA (including tax) en los KPI headline
+let theme = 'dark';
+let currentTab = 'cruce', currentPage = 0;
+let empDetallePage = 0;
+const PAGE = 50;
+let charts = {};
+let firstLoadDone = false;
+
+// Cuentas contables cuyo nombre indica movimiento de capital de socios (no gasto operativo)
+const SOCIOS_KEYWORDS = ['ACCIONISTA', 'DIVIDENDO'];
+
+// Dentro del costo directo por empleado (cuentas Expense / Cost_of_Goods_Sold dimensionadas
+// a su código RECURSO), estas palabras clave separan "Nómina" de "Otro costo directo"
+// (outsourcing/maquila, viáticos, etc. facturados por terceros pero atribuidos a la persona).
+const NOMINA_KEYWORDS = ['SUELDO','SALARIO','HORAS EXTRA','PREMIO','DESPENSA','IMPUESTO SOBRE NOMINA','IMPUESTO AL SALARIO','RETIRO, CESANTIA','VALES DE'];
+
+// Alias de clientes: distintas razones sociales que en la práctica son el mismo cliente.
+// Clave = nombre normalizado (sin acentos/sufijos societarios), valor = nombre normalizado canónico.
+const CLIENT_ALIASES = {
+  'TERNIUM DE MEXICO': 'TERNIUM MEXICO',
+};
+
+function qs(id){ return document.getElementById(id); }
+
+// ── STATUS UI ───────────────────────────────────────────────
+function setLive(state, label){
+  const dot = qs('live-dot'), lbl = qs('live-label');
+  dot.className = 'live-dot ' + state;
+  lbl.textContent = label;
+}
+function setLoadingMsg(msg){ const el = qs('loading-msg'); if(el) el.textContent = msg; }
+function showError(msg){
+  const el = qs('app-error');
+  el.style.display = 'block';
+  el.textContent = '❌ ' + msg;
+}
+function clearError(){ qs('app-error').style.display = 'none'; }
+
+// ════════════════════════════════════════════════════════════
+//  SESIÓN — requiere login (login.html) antes de tocar el proxy
+// ════════════════════════════════════════════════════════════
+const SESSION_KEY = 'tesis_session_token';
+const SESSION_EMAIL_KEY = 'tesis_session_email';
+function getSessionToken(){ return localStorage.getItem(SESSION_KEY); }
+function cerrarSesionYRedirigir(){
+  localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(SESSION_EMAIL_KEY);
+  window.location.href = 'login.html';
+}
+if (!getSessionToken()){
+  window.location.href = 'login.html';
+}
+{ const el = qs('sesion-email'); if (el) el.textContent = localStorage.getItem(SESSION_EMAIL_KEY) || ''; }
+
+// ════════════════════════════════════════════════════════════
+//  AUTH & FETCH — vía proxy Railway (secreto vive en Railway env)
+// ════════════════════════════════════════════════════════════
+async function getToken(){
+  if (TOKEN && Date.now() < TOKEN_EXP - 60000) return TOKEN;
+  const r = await fetch(`${PROXY}/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY, 'x-session-token': getSessionToken()||'' },
+    body: JSON.stringify({})
+  });
+  if (r.status === 401) { cerrarSesionYRedirigir(); throw new Error('Sesión vencida, redirigiendo al login…'); }
+  if (!r.ok) { const e = await r.text(); throw new Error(`/token ${r.status}: ${e.slice(0,300)}`); }
+  const d = await r.json();
+  TOKEN = d.access_token; TOKEN_EXP = Date.now() + (d.expires_in||3600) * 1000;
+  return TOKEN;
+}
+
+async function bcFetch(url){
+  const tok = await getToken();
+  const r = await fetch(`${PROXY}/bc?token=${encodeURIComponent(tok)}&url=${encodeURIComponent(url)}`, {
+    headers: { 'x-api-key': API_KEY, 'x-session-token': getSessionToken()||'' }
+  });
+  if (r.status === 401) { cerrarSesionYRedirigir(); throw new Error('Sesión vencida, redirigiendo al login…'); }
+  if (!r.ok) { const e = await r.text(); throw new Error(`/bc ${r.status}: ${e.slice(0,300)}`); }
+  return r.json();
+}
+
+// Fetch defensivo: sigue @odata.nextLink si el proxy lo expone,
+// y además usamos $top generoso porque en la práctica no siempre viene nextLink.
+async function bcFetchAll(url, cap = 20000){
+  const rows = [];
+  let next = url, guard = 0;
+  while (next && guard < 25) {
+    const d = await bcFetch(next);
+    rows.push(...(d.value || []));
+    next = d['@odata.nextLink'] || null;
+    guard++;
+    if (rows.length >= cap) break;
+  }
+  return rows;
+}
+
+async function pingProxy(){
+  const r = await fetch(`${PROXY}/ping`);
+  if (!r.ok) throw new Error('Proxy no disponible');
+  return r.json();
+}
+
+async function getCompanyId(){
+  if (companyId) return companyId;
+  const d = await bcFetch(`${V2_BASE}/companies`);
+  companyId = (d.value || [])[0]?.id;
+  if (!companyId) throw new Error('No se encontró la compañía en Business Central');
+  return companyId;
+}
+
+// ════════════════════════════════════════════════════════════
+//  CARGA DE DATOS (todo en vivo, nada hardcodeado)
+// ════════════════════════════════════════════════════════════
+async function cargarEmpleados(){
+  const cid = await getCompanyId();
+  const dims = await bcFetch(`${V2_BASE}/companies(${cid})/dimensions?$top=50`);
+  const recurso = (dims.value || []).find(d => (d.code||'').toUpperCase() === 'RECURSO');
+  if (!recurso) return;
+  const vals = await bcFetchAll(`${V2_BASE}/companies(${cid})/dimensions(${recurso.id})/dimensionValues?$top=2000`);
+  empleadosMap = {};
+  vals.forEach(v => { if (v.code) empleadosMap[v.code] = v.displayName || v.name || v.code; });
+}
+
+async function cargarDirectorios(){
+  const cid = await getCompanyId();
+  customersRaw = await bcFetchAll(`${V2_BASE}/companies(${cid})/customers?$top=1000`);
+  vendorsRaw = await bcFetchAll(`${V2_BASE}/companies(${cid})/vendors?$top=1000`);
+}
+
+async function cargarCuentas(){
+  const cid = await getCompanyId();
+  accountsRaw = await bcFetchAll(`${V2_BASE}/companies(${cid})/accounts?$top=1000`);
+  accountsByNumber = {};
+  accountsRaw.forEach(a => { accountsByNumber[a.number] = a; });
+}
+
+function dateFilterV2(year, field){
+  if (year === 'all') return '';
+  return `&$filter=${field} ge ${year}-01-01 and ${field} le ${year}-12-31`;
+}
+
+async function cargarVentasCompras(year){
+  const cid = await getCompanyId();
+  const f = dateFilterV2(year, 'postingDate');
+  salesInvoices = await bcFetchAll(`${V2_BASE}/companies(${cid})/salesInvoices?$top=1000${f}`);
+  purchaseInvoices = await bcFetchAll(`${V2_BASE}/companies(${cid})/purchaseInvoices?$top=1000${f}`);
+}
+
+async function cargarGL(year){
+  const cid = await getCompanyId();
+  const f = dateFilterV2(year, 'postingDate');
+  glEntries = await bcFetchAll(`${V2_BASE}/companies(${cid})/generalLedgerEntries?$top=20000${f}`, 30000);
+}
+
+// Mapa Dimension_Set_ID → código RECURSO (empleado). No depende del año: se carga una sola vez.
+async function cargarDimensionSetsRecurso(){
+  const rows = await bcFetchAll(`${ODATA_BASE}/DimensionSetEntries?$filter=Dimension_Code eq 'RECURSO'&$top=5000`, 20000);
+  dimSetToRecurso = {};
+  rows.forEach(r => { if (r.Dimension_Value_Code) dimSetToRecurso[r.Dimension_Set_ID] = r.Dimension_Value_Code; });
+}
+
+// G_LEntries (tabla nativa, incluye Dimension_Set_ID) — para atribuir nómina/costo directo a cada empleado.
+async function cargarGLRaw(year){
+  const dateF = year !== 'all'
+    ? `&$filter=Posting_Date ge ${year}-01-01T00:00:00Z and Posting_Date le ${year}-12-31T23:59:59Z`
+    : '';
+  glRawEntries = await bcFetchAll(`${ODATA_BASE}/G_LEntries?$top=20000${dateF}`, 30000);
+}
+
+async function cargarMovs(year){
+  const dateF = year !== 'all'
+    ? `&$filter=Posting_Date ge ${year}-01-01T00:00:00Z and Posting_Date le ${year}-12-31T23:59:59Z`
+    : '';
+  rawMovs = await bcFetchAll(`${ODATA_BASE}/MovsProyecto?$top=5000${dateF}`, 30000);
+}
+
+async function cargarPeriodo(year){
+  await Promise.all([cargarVentasCompras(year), cargarGL(year), cargarGLRaw(year), cargarMovs(year)]);
+}
+
+// ════════════════════════════════════════════════════════════
+//  PROCESAMIENTO
+// ════════════════════════════════════════════════════════════
+function isUsage(r){ return String(r.Entry_Type||'').toLowerCase() === 'usage'; }
+function isSale(r){ return String(r.Entry_Type||'').toLowerCase() === 'sale'; }
+function empName(code){ if(!code) return null; return empleadosMap[code] || code; }
+
+// Normaliza razón social para poder agrupar variantes del mismo cliente
+// (p. ej. "TERNIUM DE MEXICO, S.A. DE C.V." y "TERNIUM MEXICO").
+function normalizeClientName(name){
+  if (!name) return '';
+  let n = name.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  n = n.replace(/,?\s*S\.?\s*A\.?\s*(DE)?\s*C\.?\s*V\.?\s*$/,'');
+  n = n.replace(/,?\s*S\s*DE\s*R\.?\s*L\.?\s*(DE)?\s*C\.?\s*V\.?\s*$/,'');
+  n = n.replace(/[.,]/g,'');
+  n = n.replace(/\s+/g,' ').trim();
+  return n;
+}
+function canonicalCliente(name){
+  const norm = normalizeClientName(name);
+  return CLIENT_ALIASES[norm] || norm;
+}
+// Clasifica una cuenta contable: 'socios' | 'gasto' | 'otro'
+function clasificarCuenta(accountNumber){
+  const acc = accountsByNumber[accountNumber];
+  if (!acc) return 'otro';
+  const nombre = (acc.displayName||'').toUpperCase();
+  if (SOCIOS_KEYWORDS.some(k => nombre.includes(k))) return 'socios';
+  if (acc.category === 'Expense' || acc.category === 'Cost_x0020_of_x0020_Goods_x0020_Sold') return 'gasto';
+  return 'otro';
+}
+
+function procesarDatos(){
+  usageRows = rawMovs.filter(isUsage);
+  saleRows = rawMovs.filter(isSale);
+
+  // Mapa factura → datos de la factura de venta (para nombre de cliente real + desglose IVA)
+  const invByNumber = {};
+  salesInvoices.forEach(inv => { invByNumber[inv.number] = inv; });
+
+  const saleMap = {};
+  saleRows.forEach(s => {
+    const k = `${s.Job_No}||${s.Job_Task_No}`;
+    (saleMap[k] = saleMap[k] || []).push(s);
+  });
+
+  cruceRows = usageRows.map(u => {
+    const k = `${u.Job_No}||${u.Job_Task_No}`;
+    const sales = saleMap[k] || [];
+    const sale = sales[0] || null;
+    const empCod = u.Global_Dimension_2_Code || '';
+    const factura = sale?.Document_No || '—';
+    const invInfo = invByNumber[factura];
+    return {
+      _empCod: empCod,
+      _empName: empName(empCod) || empCod || '—',
+      _job: u.Job_No || '—',
+      _task: u.Job_Task_No || '—',
+      _desc: u.Description || '—',
+      _qty: parseFloat(u.Quantity||0),
+      _unitPrice: parseFloat(u.Unit_Price||0),
+      _total: parseFloat(u.Total_Price||0),
+      _date: u.Posting_Date || '',
+      _factura: factura,
+      _cliente: invInfo?.customerName || '—',
+      _saleTotal: sales.reduce((s,x)=>s+parseFloat(x.Total_Price||0),0),
+      _montoSinIVA: 0, _montoConIVA: 0, _iva: 0, // se completan abajo (prorateo por factura)
+    };
+  });
+
+  // ── Prorateo de facturación por empleado: cuando varios empleados/registros
+  // comparten la misma factura, repartimos el importe de la factura (con y sin IVA)
+  // en proporción a las horas de cada registro Usage. ──
+  const horasPorFactura = {};
+  cruceRows.forEach(r => {
+    if (r._factura === '—') return;
+    horasPorFactura[r._factura] = (horasPorFactura[r._factura]||0) + r._qty;
+  });
+  cruceRows.forEach(r => {
+    if (r._factura === '—') return;
+    const inv = invByNumber[r._factura];
+    const totalHoras = horasPorFactura[r._factura];
+    if (!inv || !totalHoras) return;
+    const share = totalHoras > 0 ? r._qty / totalHoras : 0;
+    r._montoSinIVA = (inv.totalAmountExcludingTax||0) * share;
+    r._montoConIVA = (inv.totalAmountIncludingTax||0) * share;
+    r._iva = r._montoConIVA - r._montoSinIVA;
+  });
+
+  // ── Ventas (con alias de clientes: mismas razones sociales = mismo cliente) ──
+  const salesActivas = salesInvoices.filter(i => i.status !== 'Canceled');
+  const clienteAgg = {};
+  salesActivas.forEach(inv => {
+    const rawName = inv.customerName || inv.customerNumber || '—';
+    const key = canonicalCliente(rawName) || rawName;
+    if (!clienteAgg[key]) clienteAgg[key] = { cliente: rawName, totalConIVA: 0, totalSinIVA: 0, facturas: 0 };
+    else if (rawName.length < clienteAgg[key].cliente.length) clienteAgg[key].cliente = rawName; // nombre más corto/legible
+    clienteAgg[key].totalConIVA += inv.totalAmountIncludingTax || 0;
+    clienteAgg[key].totalSinIVA += inv.totalAmountExcludingTax || 0;
+    clienteAgg[key].facturas++;
+  });
+  const topClientes = Object.values(clienteAgg)
+    .map(c => ({ ...c, total: showIVA ? c.totalConIVA : c.totalSinIVA }))
+    .sort((a,b)=>b.total-a.total);
+  const statusCountsSales = {};
+  salesInvoices.forEach(i => { statusCountsSales[i.status] = (statusCountsSales[i.status]||0)+1; });
+
+  DATA.ventas = {
+    total_mxn: salesActivas.reduce((s,i)=>s+(showIVA ? (i.totalAmountIncludingTax||0) : (i.totalAmountExcludingTax||0)),0),
+    total_con_iva: salesActivas.reduce((s,i)=>s+(i.totalAmountIncludingTax||0),0),
+    total_sin_iva: salesActivas.reduce((s,i)=>s+(i.totalAmountExcludingTax||0),0),
+    total_facturas: salesInvoices.length,
+    pagadas: statusCountsSales['Paid']||0,
+    abiertas: statusCountsSales['Open']||0,
+    canceladas: statusCountsSales['Canceled']||0,
+    statusCounts: statusCountsSales,
+    top_clientes: topClientes,
+  };
+
+  // ── Compras ──
+  const comprasActivas = purchaseInvoices.filter(i => i.status !== 'Canceled');
+  const provAgg = {};
+  comprasActivas.forEach(inv => {
+    const k = inv.vendorName || inv.vendorNumber || '—';
+    if (!provAgg[k]) provAgg[k] = { proveedor: k, totalConIVA: 0, totalSinIVA: 0, facturas: 0 };
+    provAgg[k].totalConIVA += inv.totalAmountIncludingTax || 0;
+    provAgg[k].totalSinIVA += inv.totalAmountExcludingTax || 0;
+    provAgg[k].facturas++;
+  });
+  const topProveedores = Object.values(provAgg)
+    .map(p => ({ ...p, total: showIVA ? p.totalConIVA : p.totalSinIVA }))
+    .sort((a,b)=>b.total-a.total);
+
+  DATA.compras = {
+    total_mxn: comprasActivas.reduce((s,i)=>s+(showIVA ? (i.totalAmountIncludingTax||0) : (i.totalAmountExcludingTax||0)),0),
+    total_facturas: purchaseInvoices.length,
+    top_proveedores: topProveedores,
+  };
+
+  // ── Clasificación GL: gasto operativo vs retiro de socios/dividendos ──
+  let gastoOperativo = 0, retiroSocios = 0;
+  const retiroSociosDetalle = [];
+  glEntries.forEach(e => {
+    const clase = clasificarCuenta(e.accountNumber);
+    const neto = (e.debitAmount||0) - (e.creditAmount||0);
+    if (clase === 'gasto') gastoOperativo += neto;
+    else if (clase === 'socios') {
+      retiroSocios += neto;
+      retiroSociosDetalle.push({
+        fecha: e.postingDate,
+        cuenta: (accountsByNumber[e.accountNumber]?.displayName || e.accountNumber || '').trim(),
+        descripcion: e.description || '—',
+        monto: neto,
+      });
+    }
+  });
+  retiroSociosDetalle.sort((a,b)=> new Date(b.fecha) - new Date(a.fecha));
+
+  // ── Nómina y costo directo por empleado ──
+  // G_LEntries (tabla nativa) trae Dimension_Set_ID; DimensionSetEntries lo traduce a código RECURSO.
+  // Sólo contamos el lado de DÉBITO en cuentas Expense/Cost_of_Goods_Sold (el gasto real),
+  // ignorando las contrapartidas de pasivo (Nómina a pagar, retenciones IMSS/ISR, IVA, etc.)
+  // y cualquier entrada de ingresos (Ventas) que comparta la misma dimensión.
+  const costosEmpAgg = {};
+  const costosEmpMesAgg = {}; // empCod||YYYY-MM -> {nomina, otroCostoDirecto}
+  let nominaTotal = 0, otroCostoDirectoTotal = 0;
+  glRawEntries.forEach(e => {
+    const empCod = dimSetToRecurso[e.Dimension_Set_ID];
+    if (!empCod) return;
+    const debit = e.Debit_Amount || 0;
+    if (debit <= 0) return;
+    const acc = accountsByNumber[e.G_L_Account_No];
+    const cat = acc ? acc.category : null;
+    if (cat !== 'Expense' && cat !== 'Cost_x0020_of_x0020_Goods_x0020_Sold') return;
+    const nombreCuenta = (e.G_L_Account_Name || acc?.displayName || '').toUpperCase();
+    const esNomina = NOMINA_KEYWORDS.some(k => nombreCuenta.includes(k));
+    if (!costosEmpAgg[empCod]) costosEmpAgg[empCod] = { nomina: 0, otroCostoDirecto: 0 };
+    const mes = (e.Posting_Date||'').slice(0,7);
+    const mk = empCod+'||'+mes;
+    if (!costosEmpMesAgg[mk]) costosEmpMesAgg[mk] = { nomina: 0, otroCostoDirecto: 0 };
+    if (esNomina) { costosEmpAgg[empCod].nomina += debit; costosEmpMesAgg[mk].nomina += debit; nominaTotal += debit; }
+    else { costosEmpAgg[empCod].otroCostoDirecto += debit; costosEmpMesAgg[mk].otroCostoDirecto += debit; otroCostoDirectoTotal += debit; }
+  });
+  DATA.costosEmpleado = costosEmpAgg;
+  DATA.costosEmpleadoMes = costosEmpMesAgg;
+  DATA.nomina = { total: nominaTotal, otroCostoDirecto: otroCostoDirectoTotal, totalCostoDirecto: nominaTotal + otroCostoDirectoTotal, empleadosConCosto: Object.keys(costosEmpAgg).length };
+
+  // ── Proyectos (desde MovsProyecto) ──
+  const empCodsActivos = new Set(usageRows.map(r=>r.Global_Dimension_2_Code).filter(Boolean));
+  const jobsActivos = new Set(usageRows.map(r=>r.Job_No).filter(Boolean));
+  const facturasGeneradas = new Set(saleRows.map(r=>r.Document_No).filter(Boolean));
+
+  DATA.proyectos = {
+    total_horas: usageRows.reduce((s,r)=>s+parseFloat(r.Quantity||0),0),
+    total_facturado_mxn: saleRows.reduce((s,r)=>s+Math.abs(parseFloat(r.Total_Price||0)),0),
+    empleados_activos: empCodsActivos.size,
+    proyectos_activos: jobsActivos.size,
+    facturas_generadas: facturasGeneradas.size,
+  };
+
+  // Horas por empleado (incluye importe facturado con/sin IVA, prorateado)
+  const horasEmpAgg = {};
+  cruceRows.forEach(r => {
+    const c = r._empCod;
+    if (!c) return;
+    if (!horasEmpAgg[c]) horasEmpAgg[c] = { codigo: c, nombre: empName(c), horas: 0, montoSinIVA: 0, montoConIVA: 0, facturas: new Set() };
+    horasEmpAgg[c].horas += r._qty;
+    horasEmpAgg[c].montoSinIVA += r._montoSinIVA;
+    horasEmpAgg[c].montoConIVA += r._montoConIVA;
+    if (r._factura !== '—') horasEmpAgg[c].facturas.add(r._factura);
+  });
+  // Aseguramos que empleados con nómina/costo pero SIN horas facturadas (ej. administrativos)
+  // también aparezcan — de otro modo su costo sólo se vería en el total agregado.
+  Object.keys(costosEmpAgg).forEach(c => {
+    if (!horasEmpAgg[c]) horasEmpAgg[c] = { codigo: c, nombre: empName(c), horas: 0, montoSinIVA: 0, montoConIVA: 0, facturas: new Set() };
+  });
+
+  DATA.horasEmpleados = Object.values(horasEmpAgg)
+    .map(e => {
+      const costo = costosEmpAgg[e.codigo] || { nomina: 0, otroCostoDirecto: 0 };
+      const costoTotal = costo.nomina + costo.otroCostoDirecto;
+      // Margen: facturación SIN IVA (ingreso real de la empresa) menos el costo directo.
+      const margen = e.montoSinIVA - costoTotal;
+      const margenPct = e.montoSinIVA > 0 ? (margen / e.montoSinIVA * 100) : null;
+      return { ...e, iva: e.montoConIVA - e.montoSinIVA, facturas: e.facturas.size,
+        costoNomina: costo.nomina, costoOtro: costo.otroCostoDirecto, costoTotal, margen, margenPct };
+    })
+    .sort((a,b)=>b.horas-a.horas);
+
+  // Horas por proyecto
+  const horasJobAgg = {};
+  usageRows.forEach(r => {
+    const j = r.Job_No;
+    if (!j) return;
+    horasJobAgg[j] = (horasJobAgg[j]||0) + parseFloat(r.Quantity||0);
+  });
+  DATA.horasProyectos = Object.entries(horasJobAgg).map(([proyecto,horas])=>({proyecto,horas})).sort((a,b)=>b.horas-a.horas);
+
+  // Facturas (para tablas Ventas / Proyectos) — siempre con subtotal/IVA/total explícitos
+  DATA.facturas = [...salesInvoices]
+    .sort((a,b)=> new Date(b.postingDate) - new Date(a.postingDate))
+    .map(inv => ({
+      numero: inv.number, cliente: inv.customerName, fecha: inv.postingDate,
+      vencimiento: inv.dueDate, subtotal: inv.totalAmountExcludingTax, iva: inv.totalTaxAmount,
+      total: inv.totalAmountIncludingTax, estado: inv.status,
+    }));
+
+  // Facturas de compra
+  DATA.facturasCompra = [...purchaseInvoices]
+    .sort((a,b)=> new Date(b.postingDate) - new Date(a.postingDate))
+    .map(inv => ({
+      numero: inv.number, proveedor: inv.vendorName, fecha: inv.postingDate,
+      vencimiento: inv.dueDate, subtotal: inv.totalAmountExcludingTax, iva: inv.totalTaxAmount,
+      total: inv.totalAmountIncludingTax, estado: inv.status,
+    }));
+
+  // Clientes / Proveedores directorio
+  DATA.clientes = customersRaw.map(c => ({ id: c.number, nombre: c.displayName, ciudad: c.city, pais: c.country }));
+
+  // GL / contabilidad
+  const debitos = glEntries.reduce((s,e)=>s+(e.debitAmount||0),0);
+  const creditos = glEntries.reduce((s,e)=>s+(e.creditAmount||0),0);
+  DATA.contabilidad = {
+    debitos, creditos, diferencia: debitos - creditos, entradas: glEntries.length,
+    gastoOperativo, retiroSocios, retiroSociosDetalle,
+  };
+
+  // Empleados directorio (RECURSO) — sólo los que tienen nombre asignado, alfabético
+  DATA.empleadosDir = Object.entries(empleadosMap)
+    .map(([codigo,nombre])=>({codigo,nombre}))
+    .sort((a,b)=> a.nombre.localeCompare(b.nombre));
+}
+
+// ════════════════════════════════════════════════════════════
+//  FORMATO
+// ════════════════════════════════════════════════════════════
+function fc(v){
+  if (v==null || isNaN(v)) return '—';
+  const val = showUSD && fxRate ? v/fxRate : v;
+  const pfx = showUSD ? 'USD ' : '$';
+  if (Math.abs(val) >= 1000000) return pfx+(val/1000000).toFixed(2)+'M';
+  if (Math.abs(val) >= 1000) return pfx+(val/1000).toFixed(1)+'K';
+  return pfx+new Intl.NumberFormat('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}).format(val);
+}
+function fmt(v){ // formato completo (2 decimales), usado en tablas de detalle
+  if (v==null || isNaN(v)) return '—';
+  const val = showUSD && fxRate ? v/fxRate : v;
+  const pfx = showUSD ? 'USD ' : '$';
+  return pfx+new Intl.NumberFormat('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Math.abs(val));
+}
+function fmtHrs(v){ return v!=null ? parseFloat(v).toFixed(2) : '—'; }
+function fd(d){ if(!d) return '—'; return new Date(d).toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'}); }
+
+async function fetchFX(){
+  try{
+    const r = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+    const d = await r.json(); fxRate = d.rates?.MXN || null;
+  }catch(e){
+    try{
+      const r2 = await fetch('https://open.er-api.com/v6/latest/USD');
+      const d2 = await r2.json(); fxRate = d2.rates?.MXN || null;
+    }catch(e2){ fxRate = null; }
+  }
+  if (fxRate){
+    const b = qs('fx-badge');
+    b.textContent = `1 USD = $${fxRate.toFixed(2)} MXN`;
+    b.style.display = 'inline-block';
+  }
+}
+function toggleUSD(){
+  if (!showUSD){
+    if (!fxRate){ alert('Cotización aún cargando, intentá en un momento.'); return; }
+    showUSD = true;
+    qs('btn-usd').textContent = '🇲🇽 Ver en MXN'; qs('btn-usd').className = 'btn btn-green';
+  } else {
+    showUSD = false;
+    qs('btn-usd').textContent = '💵 Ver en USD'; qs('btn-usd').className = 'btn btn-amber';
+  }
+  renderAll();
+}
+
+function toggleTheme(){
+  theme = theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', theme);
+  qs('btn-theme').textContent = theme === 'dark' ? '☀️ Ver en claro' : '🌙 Ver en oscuro';
+  if (firstLoadDone) renderAll(); // recolorea los charts con la paleta correcta
+}
+
+function toggleIVA(){
+  showIVA = !showIVA;
+  qs('btn-iva').textContent = showIVA ? '🧾 IVA: Incluido' : '🧾 IVA: Excluido';
+  qs('btn-iva').className = showIVA ? 'btn btn-ghost' : 'btn btn-green';
+  if (firstLoadDone){
+    procesarDatos(); // los agregados (ventas/compras/top clientes) dependen de showIVA
+    renderAll();
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+//  RENDER — Overview
+// ════════════════════════════════════════════════════════════
+function badgeEstado(estado){
+  const map = { Paid:'b-green', Open:'b-amber', Draft:'b-blue', Canceled:'b-gray' };
+  const lbl = STATUS_LABEL[estado] || estado || '—';
+  return `<span class="badge ${map[estado]||'b-gray'}">${lbl}</span>`;
+}
+
+function renderOverview(){
+  const v = DATA.ventas, c = DATA.compras, p = DATA.proyectos;
+  qs('kpi-ventas-total').textContent = fc(v.total_mxn);
+  qs('kpi-ventas-sub').textContent = `MXN ${showIVA?'con IVA':'sin IVA'} · ${qs('f-year').value === 'all' ? 'todos los años' : qs('f-year').value}`;
+  qs('kpi-ventas-tag').textContent = `${v.total_facturas} facturas`;
+
+  qs('kpi-horas-total').textContent = p.total_horas.toLocaleString('es-MX',{maximumFractionDigits:0});
+  qs('kpi-horas-tag').textContent = `${p.empleados_activos} empleados`;
+
+  qs('kpi-compras-total').textContent = fc(c.total_mxn);
+  qs('kpi-compras-sub').textContent = `MXN ${showIVA?'con IVA':'sin IVA'} · ${c.total_facturas} facturas`;
+  qs('kpi-compras-tag').textContent = `${c.total_facturas} facturas`;
+
+  qs('kpi-abiertas').textContent = v.abiertas;
+  qs('kpi-abiertas-sub').textContent = `de ${v.total_facturas} emitidas`;
+
+  qs('kpi-proy-activos').textContent = p.proyectos_activos;
+  qs('kpi-proy-sub').textContent = `${p.facturas_generadas} facturas generadas`;
+  const topProy = DATA.horasProyectos[0];
+  qs('kpi-proy-tag').textContent = topProy ? `${topProy.proyecto} lidera` : '—';
+
+  // Top clientes bars
+  const maxC = v.top_clientes[0]?.total || 1;
+  qs('ov-clientes-bars').innerHTML = v.top_clientes.slice(0,7).map((cl,i)=>`
+    <div class="bar-row">
+      <div class="bar-label">${cl.cliente}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,cl.total/maxC*100).toFixed(1)}%;background:${gradFor(i)}"><span>${fc(cl.total)}</span></div></div>
+      <div class="bar-meta">${cl.facturas} fact.</div>
+    </div>`).join('') || '<div class="empty">Sin datos</div>';
+
+  // Top proveedores bars
+  const maxP = c.top_proveedores[0]?.total || 1;
+  qs('ov-proveedores-bars').innerHTML = c.top_proveedores.slice(0,7).map((pr,i)=>`
+    <div class="bar-row">
+      <div class="bar-label" style="width:160px">${pr.proveedor}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,pr.total/maxP*100).toFixed(1)}%;background:${gradForWarm(i)}"><span>${fc(pr.total)}</span></div></div>
+      <div class="bar-meta">${pr.facturas} fact.</div>
+    </div>`).join('') || '<div class="empty">Sin datos</div>';
+
+  // Contabilidad
+  const gl = DATA.contabilidad;
+  qs('gl-debitos').textContent = fc(gl.debitos);
+  qs('gl-creditos').textContent = fc(gl.creditos);
+  qs('gl-count').textContent = gl.entradas.toLocaleString('es-MX');
+  const bal = qs('gl-balance-badge');
+  if (Math.abs(gl.diferencia) < 1){
+    bal.style.background='rgba(16,185,129,.06)'; bal.style.border='1px solid rgba(16,185,129,.15)'; bal.style.color='var(--green)';
+    bal.textContent = '✓ Balance cuadrado';
+  } else {
+    bal.style.background='rgba(245,158,11,.06)'; bal.style.border='1px solid rgba(245,158,11,.15)'; bal.style.color='var(--amber)';
+    bal.textContent = `⚠ Diferencia ${fc(gl.diferencia)} MXN`;
+  }
+  qs('gl-gastos-op').textContent = fc(gl.gastoOperativo);
+  qs('gl-retiros-socios').textContent = gl.retiroSocios ? fc(gl.retiroSocios) : '$0 (sin movimientos)';
+  qs('gl-nomina').textContent = DATA.nomina.total ? fc(DATA.nomina.total) : '$0';
+
+  // Estado de facturas (doughnut dinámico)
+  const statusEntries = Object.entries(v.statusCounts);
+  mkChart('chart-estado','doughnut', statusEntries.map(([s])=>STATUS_LABEL[s]||s),
+    [{data: statusEntries.map(([,n])=>n), backgroundColor: statusEntries.map(([s])=>STATUS_COLOR[s]||'#64748b'), borderWidth:0, hoverOffset:4}],
+    {cutout:'70%', plugins:{legend:{display:false}}});
+  qs('estado-legend').innerHTML = statusEntries.map(([s,n])=>`
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+        <div style="width:10px;height:10px;border-radius:2px;background:${STATUS_COLOR[s]||'#64748b'}"></div>
+        <span style="font-size:11px;color:var(--t2)">${STATUS_LABEL[s]||s}</span>
+      </div>
+      <div style="font-size:22px;font-weight:700">${n}</div>
+    </div>`).join('');
+}
+
+function gradFor(i){
+  const pairs = [['#2563eb','#06b6d4'],['#8b5cf6','#2563eb'],['#10b981','#06b6d4']];
+  const p = pairs[i%pairs.length];
+  return `linear-gradient(90deg,${p[0]},${p[1]})`;
+}
+function gradForWarm(i){
+  const pairs = [['#f59e0b','#ef4444'],['#8b5cf6','#f59e0b'],['#10b981','#8b5cf6']];
+  const p = pairs[i%pairs.length];
+  return `linear-gradient(90deg,${p[0]},${p[1]})`;
+}
+
+// ════════════════════════════════════════════════════════════
+//  RENDER — Proyectos (resumen)
+// ════════════════════════════════════════════════════════════
+function renderProyectosResumen(){
+  const p = DATA.proyectos;
+  qs('pj-horas').textContent = p.total_horas.toLocaleString('es-MX',{maximumFractionDigits:0});
+  qs('pj-horas-sub').textContent = `registros Usage · ${qs('f-year').value==='all'?'todos los años':qs('f-year').value}`;
+  qs('pj-facturado').textContent = fc(p.total_facturado_mxn);
+  qs('pj-empleados').textContent = p.empleados_activos;
+  qs('pj-proyectos').textContent = p.proyectos_activos;
+  qs('pj-proyectos-sub').textContent = `${p.facturas_generadas} facturas generadas`;
+
+  const max = DATA.horasEmpleados[0]?.horas || 1;
+  qs('emp-bars').innerHTML = DATA.horasEmpleados.slice(0,15).map((e,i)=>`
+    <div class="bar-row">
+      <div class="bar-label" style="width:220px;font-size:10px" title="${e.nombre}">${(e.nombre||'').split(' ').slice(0,2).join(' ')}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(e.horas/max*100).toFixed(1)}%;background:${gradFor(i)}"><span>${e.horas.toFixed(0)}h</span></div></div>
+      <div class="bar-meta" style="font-size:10px">${e.codigo}</div>
+    </div>`).join('') || '<div class="empty">Sin datos</div>';
+
+  qs('proy-rank').innerHTML = DATA.horasProyectos.map((pr,i)=>`
+    <div class="rank-item">
+      <div class="rank-num">${i+1}</div>
+      <div><div class="rank-name" style="color:var(--a3);font-weight:600">${pr.proyecto}</div><div class="rank-sub">${pr.horas.toFixed(0)} horas</div></div>
+      <div class="rank-val">${pr.horas.toFixed(0)}h</div>
+    </div>`).join('') || '<div class="empty">Sin datos</div>';
+
+  qs('tbl-facturas-body').innerHTML = DATA.facturas.map(f=>`<tr>
+    <td class="bold mono">${f.numero}</td><td>${f.cliente}</td><td class="mono">${fd(f.fecha)}</td>
+    <td class="mono">${fd(f.vencimiento)}</td><td class="amt ${f.total>1000000?'green':''}">${fc(f.total)}</td>
+    <td>${badgeEstado(f.estado)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">Sin facturas en el período</td></tr>';
+}
+
+// ════════════════════════════════════════════════════════════
+//  RENDER — Ventas / Compras / Clientes / Proveedores / Empleados
+// ════════════════════════════════════════════════════════════
+function renderVentas(){
+  const v = DATA.ventas;
+  qs('vt-total').textContent = fc(v.total_mxn);
+  qs('vt-sub').textContent = `MXN ${showIVA?'con IVA':'sin IVA'} · ${v.total_facturas} facturas`;
+  qs('vt-pagadas').textContent = v.pagadas;
+  qs('vt-abiertas').textContent = v.abiertas;
+  const top = v.top_clientes[0];
+  if (top){
+    qs('vt-top-cliente').textContent = top.cliente;
+    const pct = v.total_mxn ? (top.total/v.total_mxn*100).toFixed(0) : 0;
+    qs('vt-top-cliente-sub').textContent = `${fc(top.total)} · ${pct}% del total`;
+  } else { qs('vt-top-cliente').textContent='—'; qs('vt-top-cliente-sub').textContent='—'; }
+
+  qs('tbl-ventas-body').innerHTML = DATA.facturas.map(f=>`<tr>
+    <td class="bold mono">${f.numero}</td><td>${f.cliente}</td><td class="mono">${fd(f.fecha)}</td>
+    <td class="mono">${fd(f.vencimiento)}</td><td class="amt">${fmt(f.subtotal)}</td><td class="amt" style="color:var(--t3)">${fmt(f.iva)}</td>
+    <td class="amt ${f.total>1000000?'green':''}">${fmt(f.total)}</td><td>${badgeEstado(f.estado)}</td></tr>`).join('')
+    || '<tr><td colspan="8" class="empty">Sin facturas en el período</td></tr>';
+}
+
+function renderCompras(){
+  const c = DATA.compras;
+  qs('cp-total').textContent = fc(c.total_mxn);
+  qs('cp-sub').textContent = `MXN ${showIVA?'con IVA':'sin IVA'} · ${c.total_facturas} facturas`;
+  qs('cp-facturas').textContent = c.total_facturas;
+  const top = c.top_proveedores[0];
+  if (top){
+    qs('cp-top-prov').textContent = top.proveedor;
+    const pct = c.total_mxn ? (top.total/c.total_mxn*100).toFixed(0) : 0;
+    qs('cp-top-prov-sub').textContent = `${fc(top.total)} · ${pct}% del total`;
+  } else { qs('cp-top-prov').textContent='—'; qs('cp-top-prov-sub').textContent='—'; }
+
+  const max = c.top_proveedores[0]?.total || 1;
+  qs('compras-bars').innerHTML = c.top_proveedores.slice(0,10).map((p,i)=>`
+    <div class="bar-row">
+      <div class="bar-label" style="width:200px;font-size:11px">${p.proveedor.length>25?p.proveedor.substring(0,23)+'…':p.proveedor}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,p.total/max*100).toFixed(1)}%;background:${gradForWarm(Math.floor(i/3))}"><span>${fc(p.total)}</span></div></div>
+      <div class="bar-meta">${p.facturas} fact.</div>
+    </div>`).join('') || '<div class="empty">Sin datos</div>';
+
+  qs('tbl-compras-body').innerHTML = DATA.facturasCompra.map(f=>`<tr>
+    <td class="bold mono">${f.numero}</td><td>${f.proveedor}</td><td class="mono">${fd(f.fecha)}</td>
+    <td class="mono">${fd(f.vencimiento)}</td><td class="amt">${fmt(f.subtotal)}</td><td class="amt" style="color:var(--t3)">${fmt(f.iva)}</td><td class="amt">${fmt(f.total)}</td>
+    <td>${badgeEstado(f.estado)}</td></tr>`).join('') || '<tr><td colspan="8" class="empty">Sin facturas en el período</td></tr>';
+
+  // Retiros de socios / dividendos (por cuenta contable) — no son gasto operativo
+  const gl = DATA.contabilidad;
+  qs('cp-retiros').textContent = gl.retiroSocios ? fc(gl.retiroSocios) : '$0';
+  qs('tbl-retiros-socios').innerHTML = gl.retiroSociosDetalle.map(r=>`<tr>
+    <td class="mono">${fd(r.fecha)}</td><td style="color:var(--red);font-size:11px">${r.cuenta}</td>
+    <td style="font-size:12px">${r.descripcion}</td><td class="amt">${fmt(r.monto)}</td></tr>`).join('')
+    || '<tr><td colspan="4" class="empty">Sin movimientos registrados en cuentas de socios/dividendos en el período seleccionado</td></tr>';
+}
+
+function renderClientes(){
+  const flag = { MX:'🇲🇽', US:'🇺🇸', CA:'🇨🇦' };
+  qs('clientes-count').textContent = `${DATA.clientes.length} clientes`;
+  qs('tbl-clientes').innerHTML = DATA.clientes.map(c=>`<tr>
+    <td class="mono" style="color:var(--t3)">${c.id}</td><td class="bold">${c.nombre}</td>
+    <td style="color:var(--t2)">${c.ciudad||'—'}</td><td>${flag[c.pais]||''} ${c.pais||'—'}</td></tr>`).join('')
+    || '<tr><td colspan="4" class="empty">Sin clientes</td></tr>';
+}
+
+function renderProveedores(){
+  qs('proveedores-count').textContent = `${DATA.compras.top_proveedores.length} con compras en el período · ${vendorsRaw.length} registrados en total`;
+  qs('tbl-proveedores').innerHTML = DATA.compras.top_proveedores.map((p,i)=>`<tr>
+    <td class="mono" style="color:var(--t3)">${i+1}</td><td class="bold">${p.proveedor}</td>
+    <td class="amt green">${fc(p.total)}</td><td>${p.facturas}</td></tr>`).join('')
+    || '<tr><td colspan="4" class="empty">Sin compras en el período</td></tr>';
+}
+
+function renderEmpleados(){
+  qs('emp-total-dim').textContent = DATA.empleadosDir.length;
+  qs('emp-activos').textContent = DATA.proyectos.empleados_activos;
+  const lider = DATA.horasEmpleados[0];
+  if (lider){
+    qs('emp-lider').textContent = lider.nombre;
+    qs('emp-lider-sub').textContent = `${lider.horas.toFixed(0)} h · ${lider.codigo}`;
+  } else { qs('emp-lider').textContent = '—'; qs('emp-lider-sub').textContent = 'Sin horas en el período'; }
+
+  qs('emp-nomina-total').textContent = fc(DATA.nomina.total);
+  qs('emp-nomina-sub').textContent = `${DATA.nomina.empleadosConCosto} personas con costo atribuido`;
+  qs('emp-costo-total').textContent = fc(DATA.nomina.totalCostoDirecto);
+
+  qs('tbl-emp-horas').innerHTML = DATA.horasEmpleados.slice(0,20).map((e,i)=>`<tr>
+    <td style="color:var(--t3);font-family:var(--mono)">${i+1}</td>
+    <td class="bold" style="font-size:11px">${e.nombre}</td>
+    <td class="mono" style="color:var(--t3)">${e.codigo}</td>
+    <td class="amt green">${e.horas.toFixed(1)}h</td></tr>`).join('') || '<tr><td colspan="4" class="empty">Sin horas en el período</td></tr>';
+
+  qs('tbl-emp-dir').innerHTML = DATA.empleadosDir.map(e=>`<tr>
+    <td class="mono" style="color:var(--t3)">${e.codigo}</td><td style="font-size:11px">${e.nombre}</td></tr>`).join('')
+    || '<tr><td colspan="2" class="empty">Sin datos</td></tr>';
+
+  renderEmpDetalle();
+}
+
+// ── Facturación detallada por empleado: búsqueda + agrupar por mes/factura ──
+// Los montos sin/con IVA usan _montoSinIVA / _montoConIVA de cruceRows, que
+// prorratean cada factura entre los registros de horas según su participación
+// en las horas totales de esa factura (ver procesarDatos).
+function aplicarFiltrosEmpDetalle(){ empDetallePage = 0; renderEmpDetalle(); }
+
+function renderEmpDetalle(){
+  const wrap = qs('tbl-emp-detalle-wrap');
+  if (!wrap) return;
+  const search = (qs('f-emp-search').value||'').trim().toUpperCase();
+  const mode = qs('f-emp-group').value || 'total';
+
+  const rows = cruceRows.filter(r => {
+    if (!r._empCod) return false;
+    if (!search) return true;
+    return (r._empName||'').toUpperCase().includes(search) || (r._empCod||'').toUpperCase().includes(search);
+  });
+
+  const hayCostoSinHoras = mode === 'total' && Object.keys(DATA.costosEmpleado).some(c => {
+    const nombre = empleadosMap[c] || c;
+    return !search || nombre.toUpperCase().includes(search) || c.toUpperCase().includes(search);
+  });
+
+  if (!rows.length && !hayCostoSinHoras){
+    wrap.innerHTML = '<div class="empty">Sin registros que coincidan con la búsqueda en el período seleccionado</div>';
+    return;
+  }
+
+  let grouped, theadHtml, rowHtml;
+
+  if (mode === 'mes'){
+    const agg = {};
+    rows.forEach(r=>{
+      const mes = (r._date||'').slice(0,7) || 'Sin fecha';
+      const k = r._empCod+'||'+mes;
+      if (!agg[k]) agg[k] = { empleado:r._empName, codigo:r._empCod, mes, horas:0, sinIVA:0, conIVA:0, facturas:new Set() };
+      agg[k].horas += r._qty; agg[k].sinIVA += r._montoSinIVA; agg[k].conIVA += r._montoConIVA;
+      if (r._factura!=='—') agg[k].facturas.add(r._factura);
+    });
+    grouped = Object.values(agg).map(e=>{
+      const costo = DATA.costosEmpleadoMes[e.codigo+'||'+e.mes] || { nomina:0, otroCostoDirecto:0 };
+      const costoTotal = costo.nomina + costo.otroCostoDirecto;
+      return { ...e, facturas:e.facturas.size, iva:e.conIVA-e.sinIVA,
+        costoNomina:costo.nomina, costoOtro:costo.otroCostoDirecto, costoTotal, margen:e.sinIVA-costoTotal };
+    }).sort((a,b)=> a.empleado.localeCompare(b.empleado) || a.mes.localeCompare(b.mes));
+    theadHtml = `<tr><th>Empleado</th><th>Código</th><th>Mes</th><th style="text-align:right">Horas</th><th>Facturas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th><th style="text-align:right">Nómina</th><th style="text-align:right">Otro Costo</th><th style="text-align:right">Margen</th></tr>`;
+    rowHtml = e => `<tr>
+      <td style="color:var(--a3);font-weight:600">${e.empleado}</td><td class="mono">${e.codigo}</td>
+      <td class="mono">${e.mes}</td><td class="hrs">${e.horas.toFixed(2)}</td><td style="color:var(--t3)">${e.facturas}</td>
+      <td class="amt">${fmt(e.sinIVA)}</td><td class="amt" style="color:var(--t3)">${fmt(e.iva)}</td><td class="amt green">${fmt(e.conIVA)}</td>
+      <td class="amt" style="color:var(--red)">${fmt(e.costoNomina)}</td><td class="amt" style="color:var(--amber)">${fmt(e.costoOtro)}</td>
+      <td class="amt" style="color:${e.margen>=0?'var(--green)':'var(--red)'}">${fmt(e.margen)}</td>
+    </tr>`;
+  } else if (mode === 'factura'){
+    const agg = {};
+    rows.forEach(r=>{
+      const k = r._empCod+'||'+r._factura;
+      if (!agg[k]) agg[k] = { empleado:r._empName, codigo:r._empCod, factura:r._factura, cliente:r._cliente, horas:0, sinIVA:0, conIVA:0 };
+      agg[k].horas += r._qty; agg[k].sinIVA += r._montoSinIVA; agg[k].conIVA += r._montoConIVA;
+    });
+    grouped = Object.values(agg).map(e=>({...e, iva:e.conIVA-e.sinIVA}))
+      .sort((a,b)=> a.empleado.localeCompare(b.empleado) || (b.horas-a.horas));
+    theadHtml = `<tr><th>Empleado</th><th>Código</th><th>N° Factura</th><th>Cliente</th><th style="text-align:right">Horas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th></tr>`;
+    rowHtml = e => `<tr>
+      <td style="color:var(--a3);font-weight:600">${e.empleado}</td><td class="mono">${e.codigo}</td>
+      <td>${e.factura!=='—' ? `<span class="badge b-amber">${e.factura}</span>` : '<span class="badge b-gray">—</span>'}</td>
+      <td style="color:var(--t3);font-size:12px">${e.cliente}</td><td class="hrs">${e.horas.toFixed(2)}</td>
+      <td class="amt">${fmt(e.sinIVA)}</td><td class="amt" style="color:var(--t3)">${fmt(e.iva)}</td><td class="amt green">${fmt(e.conIVA)}</td>
+    </tr>`;
+  } else { // 'total' — un renglón por empleado en todo el período seleccionado
+    const agg = {};
+    rows.forEach(r=>{
+      const k = r._empCod;
+      if (!agg[k]) agg[k] = { empleado:r._empName, codigo:k, horas:0, sinIVA:0, conIVA:0, facturas:new Set() };
+      agg[k].horas += r._qty; agg[k].sinIVA += r._montoSinIVA; agg[k].conIVA += r._montoConIVA;
+      if (r._factura!=='—') agg[k].facturas.add(r._factura);
+    });
+    // Empleados con nómina/costo pero SIN horas facturadas (ej. administrativos) — sólo si matchean la búsqueda.
+    Object.keys(DATA.costosEmpleado).forEach(c=>{
+      if (agg[c]) return;
+      const nombre = empleadosMap[c] || c;
+      if (search && !nombre.toUpperCase().includes(search) && !c.toUpperCase().includes(search)) return;
+      agg[c] = { empleado: nombre, codigo: c, horas:0, sinIVA:0, conIVA:0, facturas:new Set() };
+    });
+    grouped = Object.values(agg).map(e=>{
+      const costo = DATA.costosEmpleado[e.codigo] || { nomina:0, otroCostoDirecto:0 };
+      const costoTotal = costo.nomina + costo.otroCostoDirecto;
+      return { ...e, facturas:e.facturas.size, iva:e.conIVA-e.sinIVA,
+        costoNomina:costo.nomina, costoOtro:costo.otroCostoDirecto, costoTotal, margen:e.sinIVA-costoTotal };
+    }).sort((a,b)=>b.horas-a.horas || b.costoTotal-a.costoTotal);
+    theadHtml = `<tr><th>Empleado</th><th>Código</th><th style="text-align:right">Horas</th><th>Facturas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th><th style="text-align:right">Nómina</th><th style="text-align:right">Otro Costo</th><th style="text-align:right">Margen</th></tr>`;
+    rowHtml = e => `<tr>
+      <td style="color:var(--a3);font-weight:600">${e.empleado}</td><td class="mono">${e.codigo}</td>
+      <td class="hrs">${e.horas.toFixed(2)}</td><td style="color:var(--t3)">${e.facturas}</td>
+      <td class="amt">${fmt(e.sinIVA)}</td><td class="amt" style="color:var(--t3)">${fmt(e.iva)}</td><td class="amt green">${fmt(e.conIVA)}</td>
+      <td class="amt" style="color:var(--red)">${fmt(e.costoNomina)}</td><td class="amt" style="color:var(--amber)">${fmt(e.costoOtro)}</td>
+      <td class="amt" style="color:${e.margen>=0?'var(--green)':'var(--red)'}">${fmt(e.margen)}</td>
+    </tr>`;
+  }
+
+  const pages = Math.ceil(grouped.length / PAGE);
+  if (empDetallePage >= pages) empDetallePage = Math.max(0, pages-1);
+  const page = grouped.slice(empDetallePage*PAGE, (empDetallePage+1)*PAGE);
+
+  wrap.innerHTML = `<table><thead>${theadHtml}</thead><tbody>${page.map(rowHtml).join('')}</tbody></table>${empDetallePager(grouped.length)}`;
+  document.querySelectorAll('.emp-detalle-pager-btn').forEach(b=>{
+    b.onclick = () => { empDetallePage = parseInt(b.dataset.p); renderEmpDetalle(); };
+  });
+}
+
+function empDetallePager(total){
+  const pages = Math.ceil(total/PAGE);
+  if (pages<=1) return '';
+  const s = empDetallePage*PAGE+1, e = Math.min((empDetallePage+1)*PAGE,total);
+  let btns = '';
+  for (let i=0;i<Math.min(pages,10);i++) btns += `<button class="pager-btn emp-detalle-pager-btn ${i===empDetallePage?'on':''}" data-p="${i}">${i+1}</button>`;
+  return `<div class="pager"><span>${s}–${e} de ${total}</span><div class="pager-btns">${btns}</div></div>`;
+}
+
+// ════════════════════════════════════════════════════════════
+//  DETALLE MOVIMIENTOS (MovsProyecto) — filtros, charts, tabla
+// ════════════════════════════════════════════════════════════
+function poblarFiltrosMovs(){
+  const empCods = [...new Set(usageRows.map(r=>r.Global_Dimension_2_Code).filter(Boolean))].sort();
+  const fe = qs('f-emp');
+  const prevEmp = fe.value;
+  fe.innerHTML = '<option value="all">Todos</option>';
+  empCods.forEach(c=>{
+    const o = document.createElement('option'); o.value=c;
+    o.textContent = empleadosMap[c] ? `${empleadosMap[c]} (${c})` : c;
+    fe.appendChild(o);
+  });
+  if (empCods.includes(prevEmp)) fe.value = prevEmp;
+
+  const jobs = [...new Set(rawMovs.map(r=>r.Job_No).filter(Boolean))].sort();
+  const fj = qs('f-job');
+  const prevJob = fj.value;
+  fj.innerHTML = '<option value="all">Todos</option>';
+  jobs.forEach(j=>{ const o=document.createElement('option'); o.value=j; o.textContent=j; fj.appendChild(o); });
+  if (jobs.includes(prevJob)) fj.value = prevJob;
+}
+
+function getFilteredUsage(){
+  const emp = qs('f-emp').value, job = qs('f-job').value;
+  return cruceRows.filter(r => (emp==='all'||r._empCod===emp) && (job==='all'||r._job===job));
+}
+function getFilteredSale(){
+  const job = qs('f-job').value;
+  return saleRows.filter(r => job==='all' || (r.Job_No||'')===job);
+}
+function aplicarFiltrosMovs(){ currentPage=0; renderMovsAll(); }
+
+function renderMovsAll(){
+  const usage = getFilteredUsage(), sale = getFilteredSale();
+  renderMovsKPIs(usage, sale);
+  renderMovsCharts(usage, sale);
+  renderTable();
+}
+
+function renderMovsKPIs(usage, sale){
+  const hrs = usage.reduce((s,r)=>s+r._qty,0);
+  const amt = sale.reduce((s,r)=>s+Math.abs(parseFloat(r.Total_Price||0)),0);
+  qs('k-hrs').textContent = hrs.toFixed(1);
+  qs('k-amt').textContent = fmt(amt);
+  qs('k-cur').textContent = `Sale · ${showUSD?'USD':'MXN'}`;
+  qs('k-emps').textContent = new Set(usage.map(r=>r._empCod).filter(Boolean)).size;
+  qs('k-jobs').textContent = new Set(usage.map(r=>r._job).filter(Boolean)).size;
+  qs('k-facs').textContent = new Set(usage.map(r=>r._factura).filter(f=>f&&f!=='—')).size;
+}
+
+function renderMovsCharts(usage, sale){
+  const months = [...new Set(usage.map(r=>(r._date||'').slice(0,7)))].sort();
+  const empCods = [...new Set(usage.map(r=>r._empCod).filter(Boolean))];
+  const empDatasets = empCods.slice(0,8).map((c,i)=>({
+    label: empleadosMap[c]||c,
+    data: months.map(m=>usage.filter(r=>r._empCod===c&&(r._date||'').startsWith(m)).reduce((s,r)=>s+r._qty,0)),
+    backgroundColor: COLORS[i]+'99', borderColor: COLORS[i], borderWidth:1,
+  }));
+  mkChart('ch-monthly','bar',months,empDatasets,{scales:{x:{stacked:true},y:{stacked:true,ticks:{callback:v=>v+'h'}}},plugins:{legend:{position:'bottom',labels:{font:{size:10},color:chartTextColor()}}}});
+
+  const empHrs = empCods.map(c=>({n:empleadosMap[c]||c, v:usage.filter(r=>r._empCod===c).reduce((s,r)=>s+r._qty,0)})).sort((a,b)=>b.v-a.v).slice(0,8);
+  mkChart('ch-donut','doughnut',empHrs.map(e=>e.n),[{data:empHrs.map(e=>e.v),backgroundColor:COLORS,borderWidth:0}],{plugins:{legend:{position:'right',labels:{font:{size:10},color:chartTextColor()}}}});
+
+  mkChart('ch-emp-hrs','bar',empHrs.map(e=>e.n),[{label:'Horas',data:empHrs.map(e=>e.v),backgroundColor:COLORS,borderWidth:0}],{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{ticks:{callback:v=>v+'h'}}}});
+
+  const empAmt = empCods.map(c=>{
+    const facs = new Set(usage.filter(r=>r._empCod===c).map(r=>r._factura));
+    const amt = sale.filter(r=>facs.has(r.Document_No)).reduce((s,r)=>s+Math.abs(parseFloat(r.Total_Price||0)),0);
+    return { n: empleadosMap[c]||c, v: showUSD&&fxRate ? amt/fxRate : amt };
+  }).sort((a,b)=>b.v-a.v).slice(0,8);
+  mkChart('ch-emp-amt','bar',empAmt.map(e=>e.n),[{label:'Importe',data:empAmt.map(e=>e.v),backgroundColor:COLORS.map(c=>c+'bb'),borderWidth:0}],{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{ticks:{callback:v=>(showUSD?'USD ':'$')+Math.round(v/1000)+'K'}}}});
+
+  const jobHrs = [...new Set(usage.map(r=>r._job))].map(j=>({n:j,v:usage.filter(r=>r._job===j).reduce((s,r)=>s+r._qty,0)})).sort((a,b)=>b.v-a.v).slice(0,8);
+  mkChart('ch-jobs','bar',jobHrs.map(e=>e.n),[{label:'Horas',data:jobHrs.map(e=>e.v),backgroundColor:COLORS[2]+'99',borderWidth:0}],{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{ticks:{callback:v=>v+'h'}}}});
+}
+
+function isLightTheme(){ return document.documentElement.getAttribute('data-theme') === 'light'; }
+function chartTextColor(){ return isLightTheme() ? '#475569' : '#94a3b8'; }
+function chartTickColor(){ return isLightTheme() ? '#64748b' : '#64748b'; }
+function chartGridColor(){ return isLightTheme() ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.04)'; }
+
+function mkChart(id,type,labels,datasets,opts={}){
+  if (charts[id]) charts[id].destroy();
+  const ctx = qs(id)?.getContext('2d');
+  if (!ctx) return;
+  const base = {
+    responsive:true, maintainAspectRatio:true,
+    scales: type==='doughnut' ? undefined : {
+      x:{grid:{color:chartGridColor()},ticks:{color:chartTickColor(),font:{size:10}},...(opts.scales?.x||{})},
+      y:{grid:{color:chartGridColor()},ticks:{color:chartTickColor(),font:{size:10}},...(opts.scales?.y||{})},
+    },
+    ...opts,
+    plugins:{legend:{labels:{color:chartTextColor(),font:{size:11}}},...(opts.plugins||{})},
+  };
+  charts[id] = new Chart(ctx,{type,data:{labels,datasets},options:base});
+}
+
+function setTab(el, tab){
+  document.querySelectorAll('#sec-movs .tab').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  currentTab = tab; currentPage = 0;
+  renderTable();
+}
+function renderTable(){
+  const usage = getFilteredUsage(), sale = getFilteredSale();
+  const wrap = qs('tbl-body');
+  if (currentTab==='cruce') tblCruce(usage, wrap);
+  else if (currentTab==='usage') tblUsage(usage, wrap);
+  else if (currentTab==='sale') tblSale(sale, wrap);
+  else if (currentTab==='emp-resumen') tblEmpResumen(usage, sale, wrap);
+  else if (currentTab==='job-resumen') tblJobResumen(usage, sale, wrap);
+}
+
+function tblCruce(rows, wrap){
+  qs('tbl-title').textContent = `Empleado → Factura (${rows.length} registros)`;
+  if (!rows.length){ wrap.innerHTML = '<div class="empty">Sin datos con los filtros aplicados</div>'; return; }
+  const sorted = [...rows].sort((a,b)=>new Date(b._date)-new Date(a._date));
+  const page = sorted.slice(currentPage*PAGE,(currentPage+1)*PAGE);
+  wrap.innerHTML = `<div class="tbl-wrap"><table>
+    <thead><tr><th>Fecha</th><th>Empleado</th><th>Proyecto</th><th>Tarea</th><th>Descripción</th><th style="text-align:right">Horas</th><th style="text-align:right">Total</th><th>N° Factura</th><th>Cliente</th></tr></thead>
+    <tbody>${page.map(r=>`<tr>
+      <td class="mono">${fd(r._date)}</td>
+      <td class="emp" style="color:var(--a3);font-weight:600">${r._empName}</td>
+      <td style="color:var(--a3);font-size:11px">${r._job}</td>
+      <td style="color:var(--t3);font-size:11px">${r._task}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" title="${r._desc}">${r._desc}</td>
+      <td class="hrs">${fmtHrs(r._qty)}</td>
+      <td class="amt">${fmt(Math.abs(r._total))}</td>
+      <td>${r._factura!=='—' ? `<span class="badge b-amber">${r._factura}</span>` : '<span class="badge b-gray">—</span>'}</td>
+      <td style="color:var(--t3)">${r._cliente}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>${pager(rows.length)}`;
+  bindPager(rows);
+}
+
+function tblUsage(rows, wrap){
+  qs('tbl-title').textContent = `Horas Usage — ${rows.length} registros`;
+  if (!rows.length){ wrap.innerHTML = '<div class="empty">Sin datos con los filtros aplicados</div>'; return; }
+  const page = [...rows].sort((a,b)=>new Date(b._date)-new Date(a._date)).slice(currentPage*PAGE,(currentPage+1)*PAGE);
+  wrap.innerHTML = `<div class="tbl-wrap"><table>
+    <thead><tr><th>Fecha</th><th>Empleado</th><th>Proyecto</th><th>Tarea</th><th>Descripción</th><th style="text-align:right">Horas</th><th style="text-align:right">P. Unit.</th><th style="text-align:right">Total</th></tr></thead>
+    <tbody>${page.map(r=>`<tr>
+      <td class="mono">${fd(r._date)}</td><td style="color:var(--a3);font-weight:600">${r._empName}</td>
+      <td style="color:var(--a3);font-size:11px">${r._job}</td><td style="color:var(--t3);font-size:11px">${r._task}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${r._desc}</td>
+      <td class="hrs">${fmtHrs(r._qty)}</td><td class="amt">${fmt(r._unitPrice)}</td><td class="amt">${fmt(Math.abs(r._total))}</td>
+    </tr>`).join('')}</tbody></table></div>${pager(rows.length)}`;
+  bindPager(rows);
+}
+
+function tblSale(rows, wrap){
+  qs('tbl-title').textContent = `Ventas Sale — ${rows.length} registros`;
+  if (!rows.length){ wrap.innerHTML = '<div class="empty">Sin datos con los filtros aplicados</div>'; return; }
+  const page = [...rows].sort((a,b)=>new Date(b.Posting_Date||0)-new Date(a.Posting_Date||0)).slice(0,PAGE);
+  wrap.innerHTML = `<div class="tbl-wrap"><table>
+    <thead><tr><th>Fecha</th><th>N° Factura</th><th>Proyecto</th><th>Tarea</th><th>Descripción</th><th style="text-align:right">Total</th></tr></thead>
+    <tbody>${page.map(r=>`<tr>
+      <td class="mono">${fd(r.Posting_Date)}</td>
+      <td>${r.Document_No ? `<span class="badge b-amber">${r.Document_No}</span>` : '<span class="badge b-gray">—</span>'}</td>
+      <td style="color:var(--a3);font-size:11px">${r.Job_No||'—'}</td>
+      <td style="color:var(--t3);font-size:11px">${r.Job_Task_No||'—'}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${r.Description||'—'}</td>
+      <td class="amt">${fmt(Math.abs(parseFloat(r.Total_Price||0)))}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+function tblEmpResumen(usage, sale, wrap){
+  qs('tbl-title').textContent = 'Resumen por Empleado';
+  const empCods = [...new Set(usage.map(r=>r._empCod).filter(Boolean))];
+  if (!empCods.length){ wrap.innerHTML = '<div class="empty">Sin datos con los filtros aplicados</div>'; return; }
+  const rows = empCods.map(c=>{
+    const uRows = usage.filter(r=>r._empCod===c);
+    const facs = new Set(uRows.map(r=>r._factura).filter(f=>f&&f!=='—'));
+    const saleAmt = sale.filter(s=>facs.has(s.Document_No)).reduce((a,s)=>a+Math.abs(parseFloat(s.Total_Price||0)),0);
+    const hrs = uRows.reduce((s,r)=>s+r._qty,0);
+    return { cod:c, nombre: empleadosMap[c]||c, hrs, saleAmt, facs: facs.size, jobs: new Set(uRows.map(r=>r._job)).size, entradas: uRows.length };
+  }).sort((a,b)=>b.hrs-a.hrs);
+  wrap.innerHTML = `<div class="tbl-wrap"><table>
+    <thead><tr><th>#</th><th>Empleado</th><th>Código</th><th style="text-align:right">Horas</th><th style="text-align:right">Importe Facturas</th><th>Facturas</th><th>Proyectos</th><th>Registros</th></tr></thead>
+    <tbody>${rows.map((r,i)=>`<tr>
+      <td style="color:var(--t3)">${i+1}</td><td style="color:var(--a3);font-weight:600">${r.nombre}</td>
+      <td class="mono">${r.cod}</td><td class="hrs">${r.hrs.toFixed(2)}</td><td class="amt">${fmt(r.saleAmt)}</td>
+      <td style="color:var(--t3)">${r.facs}</td><td style="color:var(--t3)">${r.jobs}</td><td style="color:var(--t3)">${r.entradas}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+function tblJobResumen(usage, sale, wrap){
+  qs('tbl-title').textContent = 'Resumen por Proyecto';
+  const jobs = [...new Set(usage.map(r=>r._job).filter(Boolean))];
+  if (!jobs.length){ wrap.innerHTML = '<div class="empty">Sin datos con los filtros aplicados</div>'; return; }
+  const rows = jobs.map(j=>{
+    const uRows = usage.filter(r=>r._job===j);
+    const saleAmt = sale.filter(s=>s.Job_No===j).reduce((a,s)=>a+Math.abs(parseFloat(s.Total_Price||0)),0);
+    const hrs = uRows.reduce((s,r)=>s+r._qty,0);
+    const facs = new Set(uRows.map(r=>r._factura).filter(f=>f&&f!=='—'));
+    const emps = new Set(uRows.map(r=>r._empCod).filter(Boolean));
+    return { job:j, hrs, saleAmt, facs: facs.size, emps: emps.size, entradas: uRows.length };
+  }).sort((a,b)=>b.hrs-a.hrs);
+  wrap.innerHTML = `<div class="tbl-wrap"><table>
+    <thead><tr><th>#</th><th>Proyecto</th><th style="text-align:right">Horas</th><th style="text-align:right">Importe Facturado</th><th>Facturas</th><th>Empleados</th><th>Registros</th></tr></thead>
+    <tbody>${rows.map((r,i)=>`<tr>
+      <td style="color:var(--t3)">${i+1}</td><td style="color:var(--a3);font-weight:600">${r.job}</td>
+      <td class="hrs">${r.hrs.toFixed(2)}</td><td class="amt">${fmt(r.saleAmt)}</td>
+      <td style="color:var(--t3)">${r.facs}</td><td style="color:var(--t3)">${r.emps}</td><td style="color:var(--t3)">${r.entradas}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+function pager(total){
+  const pages = Math.ceil(total/PAGE);
+  if (pages<=1) return '';
+  const s = currentPage*PAGE+1, e = Math.min((currentPage+1)*PAGE,total);
+  let btns = '';
+  for (let i=0;i<Math.min(pages,10);i++) btns += `<button class="pager-btn ${i===currentPage?'on':''}" data-p="${i}">${i+1}</button>`;
+  return `<div class="pager"><span>${s}–${e} de ${total}</span><div class="pager-btns">${btns}</div></div>`;
+}
+function bindPager(data){
+  document.querySelectorAll('.pager-btn').forEach(b=>{ b.onclick = () => { currentPage = parseInt(b.dataset.p); renderTable(); }; });
+}
+
+function exportCSV(){
+  const rows = getFilteredUsage();
+  if (!rows.length){ alert('Sin datos para exportar'); return; }
+  const h = ['Fecha','Empleado','Código Empleado','Proyecto','Tarea','Descripción','Horas','Precio Unit.','Total Línea MXN','N° Factura','Cliente','Facturado Sin IVA (prorrateado)','Facturado Con IVA (prorrateado)'];
+  const r = rows.map(r=>[r._date,r._empName,r._empCod,r._job,r._task,r._desc,r._qty,r._unitPrice,r._total,r._factura,r._cliente,r._montoSinIVA.toFixed(2),r._montoConIVA.toFixed(2)].map(v=>`"${v??''}"`).join(','));
+  const csv = [h.join(','),...r].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}));
+  a.download = `movsproyecto_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// ════════════════════════════════════════════════════════════
+//  NAV / RENDER ALL / INIT
+// ════════════════════════════════════════════════════════════
+const TITLES = { overview:'Resumen General', proyectos:'Proyectos', movs:'Detalle Movimientos', ventas:'Ventas', compras:'Compras', clientes:'Clientes', proveedores:'Proveedores', empleados:'Empleados' };
+function showSection(name, el){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  qs('sec-'+name).classList.add('active');
+  el.classList.add('active');
+  qs('page-title').textContent = TITLES[name];
+}
+
+function renderAll(){
+  renderOverview();
+  renderProyectosResumen();
+  renderVentas();
+  renderCompras();
+  renderClientes();
+  renderProveedores();
+  renderEmpleados();
+  poblarFiltrosMovs();
+  renderMovsAll();
+}
+
+async function cargarTodo(year, opts={}){
+  clearError();
+  qs('btn-refresh').disabled = true;
+  setLive('busy', 'BC · Sincronizando…');
+  try{
+    if (!opts.skipStatic){
+      setLoadingMsg('Verificando conexión con el proxy…');
+      await pingProxy();
+      setLoadingMsg('Autenticando con Azure AD…');
+      await getToken();
+      setLoadingMsg('Cargando directorio de empleados (RECURSO)…');
+      await cargarEmpleados();
+      setLoadingMsg('Cargando clientes y proveedores…');
+      await cargarDirectorios();
+      setLoadingMsg('Cargando plan de cuentas…');
+      await cargarCuentas();
+      setLoadingMsg('Cargando dimensiones de nómina/costo directo…');
+      await cargarDimensionSetsRecurso();
+    }
+    setLoadingMsg(`Cargando ventas, compras y contabilidad ${year==='all'?'(todos los años)':year}…`);
+    await cargarPeriodo(year);
+
+    procesarDatos();
+    renderAll();
+    if (!fxRate) fetchFX();
+
+    setLive('on', `BC · Production · ${new Date().toLocaleTimeString('es-MX')}`);
+
+    if (!firstLoadDone){
+      qs('app-loading').style.display = 'none';
+      qs('app-body').style.display = 'block';
+      firstLoadDone = true;
+    }
+  }catch(e){
+    setLive('off', 'BC · Error de conexión');
+    showError(e.message || String(e));
+    if (!firstLoadDone){
+      qs('loading-msg').textContent = 'No se pudo conectar. Revisá el mensaje de error abajo.';
+    }
+  }finally{
+    qs('btn-refresh').disabled = false;
+  }
+}
+
+function onYearChange(){ cargarTodo(qs('f-year').value, { skipStatic: true }); }
+function recargar(){ cargarTodo(qs('f-year').value, { skipStatic: false }); }
+
+// Auto-conectar al cargar la página
+qs('f-year').value = '2026';
+cargarTodo('2026');
+
+</script>
+</body>
+</html>
