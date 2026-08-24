@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -115,6 +115,23 @@ body { background: var(--bg); color: var(--text); font-family: var(--sans); font
 
 /* ── CARDS ── */
 .card { background: var(--s1); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 16px; }
+.row-clickable { cursor: pointer; transition: background .12s; }
+.row-clickable:hover { background: var(--s3); }
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:500; align-items:center; justify-content:center; padding:20px; }
+.modal-overlay.active { display:flex; }
+.modal-panel { background: var(--s1); border: 1px solid var(--border); border-radius: 14px; width:100%; max-width:820px; max-height:88vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+.modal-header { display:flex; align-items:flex-start; justify-content:space-between; padding:20px 24px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--s1); z-index:1; }
+.modal-title { font-size:16px; font-weight:700; }
+.modal-sub { font-size:12px; color:var(--t3); font-family:var(--mono); margin-top:4px; }
+.modal-close { background:var(--s3); border:1px solid var(--border2); color:var(--text); width:30px; height:30px; border-radius:8px; cursor:pointer; font-size:16px; line-height:1; }
+.modal-close:hover { background:var(--border2); }
+.modal-body { padding:20px 24px; }
+.modal-kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px; }
+.modal-kpi { background:var(--s2); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+.modal-kpi .k-label { font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:var(--t3); margin-bottom:4px; }
+.modal-kpi .k-val { font-size:16px; font-weight:700; font-family:var(--mono); }
+.modal-section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--t2); margin:20px 0 8px; }
+.modal-section-title:first-child { margin-top:0; }
 .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
 .card-header h3 { font-size: 13px; font-weight: 600; }
 .card-header .sub { font-size: 11px; color: var(--t3); }
@@ -251,7 +268,7 @@ td.right { text-align: right; }
       <span class="fx-badge" id="fx-badge"></span>
       <button class="btn btn-ghost" id="btn-iva" onclick="toggleIVA()">IVA: Incluido</button>
       <button class="btn btn-amber" id="btn-usd" onclick="toggleUSD()">💵 Ver en USD</button>
-      <button class="btn btn-ghost" id="btn-theme" onclick="toggleTheme()">☀️ Ver en claro</button>
+      <button class="btn btn-ghost" id="btn-theme" onclick="toggleTheme()">🌙 Ver en oscuro</button>
       <button class="btn btn-primary" id="btn-refresh" onclick="recargar()">↻ Actualizar</button>
     </div>
   </div>
@@ -591,7 +608,7 @@ let usageRows = [], saleRows = [], cruceRows = [];
 let DATA = {};               // agregados calculados
 let fxRate = null, showUSD = false;
 let showIVA = true;          // true = montos con IVA (including tax) en los KPI headline
-let theme = 'dark';
+let theme = 'light';
 let currentTab = 'cruce', currentPage = 0;
 let empDetallePage = 0;
 const PAGE = 50;
@@ -600,6 +617,10 @@ let firstLoadDone = false;
 
 // Cuentas contables cuyo nombre indica movimiento de capital de socios (no gasto operativo)
 const SOCIOS_KEYWORDS = ['ACCIONISTA', 'DIVIDENDO'];
+
+// Códigos RECURSO de los socios (Ariel Mercogliano, Pablo Berman): sus horas no se facturan,
+// así que se excluyen de "Facturación Detallada por Empleado" (tabla + modal de sus facturas).
+const SOCIOS_RECURSO_EXCLUIR = ['D 001', 'D 002'];
 
 // Dentro del costo directo por empleado (cuentas Expense / Cost_of_Goods_Sold dimensionadas
 // a su código RECURSO), estas palabras clave separan "Nómina" de "Otro costo directo"
@@ -703,6 +724,63 @@ async function getCompanyId(){
 // ════════════════════════════════════════════════════════════
 //  CARGA DE DATOS (todo en vivo, nada hardcodeado)
 // ════════════════════════════════════════════════════════════
+// El "período de servicio" real (a qué mes corresponde el trabajo) no está en MovsProyecto:
+// está escrito en la descripción de la tarea de proyecto (Job_Task_Lines.Description), en
+// distintos formatos según el proyecto: "DEL DD/MM/YYYY AL DD/MM/YYYY", "MES AÑO",
+// "MES1-MES2 AÑO", a veces con un código de referencia adelante (ej. "E1699 JULIO 2025").
+// Proyectos de alcance fijo (sin periodicidad mensual) no tienen esta convención — para esos
+// no hay período identificable y se usa la descripción original como respaldo.
+const MESES_ES = {ENERO:1,FEBRERO:2,MARZO:3,ABRIL:4,MAYO:5,JUNIO:6,JULIO:7,AGOSTO:8,SEPTIEMBRE:9,OCTUBRE:10,NOVIEMBRE:11,DICIEMBRE:12};
+const MESES_ABR = {ENE:1,FEB:2,MAR:3,ABR:4,MAY:5,JUN:6,JUL:7,AGO:8,SEP:9,OCT:10,NOV:11,DIC:12};
+
+function parsearPeriodoTarea(desc){
+  if (!desc) return null;
+  const d = desc.toUpperCase();
+
+  // "DEL DD/MM/YYYY AL DD/MM/YYYY" (con o sin código de referencia adelante)
+  let m = d.match(/DEL\s+(\d{1,2})\/(\d{1,2})\/(\d{4})\s+AL\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m){
+    const mes = `${m[3]}-${m[2].padStart(2,'0')}`;
+    return { mes, label: `${m[1]}/${m[2]}/${m[3]} – ${m[4]}/${m[5]}/${m[6]}`, fuente: 'tarea' };
+  }
+
+  // "MES1-MES2 AÑO" (ej. "ENE-FEB 2026")
+  m = d.match(/\b([A-ZÑ]{3,12})-([A-ZÑ]{3,12})\s+(\d{4})\b/);
+  if (m){
+    const mes1 = MESES_ES[m[1]] || MESES_ABR[m[1]];
+    if (mes1) return { mes: `${m[3]}-${String(mes1).padStart(2,'0')}`, label: `${m[1]}-${m[2]} ${m[3]}`, fuente: 'tarea' };
+  }
+
+  // "MES AÑO" (ej. "MARZO 2026", "JULIO 2025")
+  m = d.match(/\b([A-ZÑ]{3,12})\s+(\d{4})\b/);
+  if (m){
+    const mes = MESES_ES[m[1]] || MESES_ABR[m[1]];
+    if (mes) return { mes: `${m[2]}-${String(mes).padStart(2,'0')}`, label: `${m[1]} ${m[2]}`, fuente: 'tarea' };
+  }
+
+  return null; // proyecto de alcance fijo, sin período mensual identificable en el texto
+}
+
+let taskPeriodMap = {};
+async function cargarJobTaskLines(){
+  const rows = await bcFetchAll(`${ODATA_BASE}/Job_Task_Lines?$top=2000`);
+  taskPeriodMap = {};
+  rows.forEach(t => {
+    const periodo = parsearPeriodoTarea(t.Description);
+    if (periodo) taskPeriodMap[`${t.Job_No}||${t.Job_Task_No}`] = periodo;
+  });
+}
+// Devuelve una etiqueta legible de período para una línea de Usage: primero intenta
+// Job_Task_Lines (más confiable), después la propia Description del registro Usage,
+// y si no matchea ningún formato conocido, cae al texto original tal cual.
+function labelPeriodoTarea(jobNo, taskNo, descUsage){
+  const fromTask = taskPeriodMap[`${jobNo}||${taskNo}`];
+  if (fromTask) return fromTask.label;
+  const fromUsage = parsearPeriodoTarea(descUsage);
+  if (fromUsage) return fromUsage.label;
+  return descUsage || '—';
+}
+
 async function cargarEmpleados(){
   const cid = await getCompanyId();
   const dims = await bcFetch(`${V2_BASE}/companies(${cid})/dimensions?$top=50`);
@@ -829,6 +907,7 @@ function procesarDatos(){
       _job: u.Job_No || '—',
       _task: u.Job_Task_No || '—',
       _desc: u.Description || '—',
+      _periodo: labelPeriodoTarea(u.Job_No, u.Job_Task_No, u.Description),
       _qty: parseFloat(u.Quantity||0),
       _unitPrice: parseFloat(u.Unit_Price||0),
       _total: parseFloat(u.Total_Price||0),
@@ -1248,12 +1327,126 @@ function renderVentas(){
     qs('vt-top-cliente-sub').textContent = `${fc(top.total)} · ${pct}% del total`;
   } else { qs('vt-top-cliente').textContent='—'; qs('vt-top-cliente-sub').textContent='—'; }
 
-  qs('tbl-ventas-body').innerHTML = DATA.facturas.map(f=>`<tr>
+  qs('tbl-ventas-body').innerHTML = DATA.facturas.map(f=>`<tr class="row-clickable" onclick="verDetalleFactura('${(f.numero||'').replace(/'/g,"\\'")}')" title="Ver detalle de la factura">
     <td class="bold mono">${f.numero}</td><td>${f.cliente}</td><td class="mono">${fd(f.fecha)}</td>
     <td class="mono">${fd(f.vencimiento)}</td><td class="amt">${fmt(f.subtotal)}</td><td class="amt" style="color:var(--t3)">${fmt(f.iva)}</td>
     <td class="amt ${f.total>1000000?'green':''}">${fmt(f.total)}</td><td>${badgeEstado(f.estado)}</td></tr>`).join('')
     || '<tr><td colspan="8" class="empty">Sin facturas en el período</td></tr>';
 }
+
+// ════════════════════════════════════════════════════════════
+//  MODAL — Detalle de factura de venta (categoría de horas + empleado)
+// ════════════════════════════════════════════════════════════
+function verDetalleFactura(numero){
+  const inv = DATA.facturas.find(f => f.numero === numero);
+  const lineas = cruceRows.filter(r => r._factura === numero);
+
+  qs('mf-titulo').textContent = `Factura ${numero}`;
+  qs('mf-sub').textContent = inv ? `${inv.cliente} · ${fd(inv.fecha)}` : '—';
+  qs('mf-subtotal').textContent = inv ? fmt(inv.subtotal) : '—';
+  qs('mf-iva').textContent = inv ? fmt(inv.iva) : '—';
+  qs('mf-total').textContent = inv ? fmt(inv.total) : '—';
+
+  const totalHoras = lineas.reduce((s,r)=>s+r._qty, 0);
+  qs('mf-horas').textContent = totalHoras ? fmtHrs(totalHoras) + ' h' : '—';
+
+  // ── Agrupado por período / tarea ──
+  const porCategoria = {};
+  lineas.forEach(r => {
+    const key = r._periodo;
+    if (!porCategoria[key]) porCategoria[key] = { periodo: r._periodo, horas: 0, sinIVA: 0, conIVA: 0 };
+    porCategoria[key].horas += r._qty;
+    porCategoria[key].sinIVA += r._montoSinIVA;
+    porCategoria[key].conIVA += r._montoConIVA;
+  });
+  const catRows = Object.values(porCategoria).sort((a,b)=>b.conIVA-a.conIVA);
+  qs('mf-tbl-categoria').innerHTML = catRows.map(c=>`<tr>
+    <td>${c.periodo}</td>
+    <td style="text-align:right" class="mono">${fmtHrs(c.horas)}</td>
+    <td class="amt">${fmt(c.sinIVA)}</td>
+    <td class="amt">${fmt(c.conIVA)}</td></tr>`).join('')
+    || '<tr><td colspan="4" class="empty">Sin categorías detectadas</td></tr>';
+
+  // ── Agrupado por empleado ──
+  const porEmpleado = {};
+  lineas.forEach(r => {
+    const key = r._empCod || r._empName;
+    if (!porEmpleado[key]) porEmpleado[key] = { nombre: r._empName, horas: 0, sinIVA: 0, conIVA: 0 };
+    porEmpleado[key].horas += r._qty;
+    porEmpleado[key].sinIVA += r._montoSinIVA;
+    porEmpleado[key].conIVA += r._montoConIVA;
+  });
+  const empRows = Object.values(porEmpleado).sort((a,b)=>b.conIVA-a.conIVA);
+  qs('mf-tbl-empleado').innerHTML = empRows.map(e=>`<tr>
+    <td>${e.nombre}</td>
+    <td style="text-align:right" class="mono">${fmtHrs(e.horas)}</td>
+    <td class="amt">${fmt(e.sinIVA)}</td>
+    <td class="amt">${fmt(e.conIVA)}</td></tr>`).join('')
+    || '<tr><td colspan="4" class="empty">Sin empleados detectados</td></tr>';
+
+  // ── Detalle línea por línea (empleado × período) ──
+  const lineasOrdenadas = [...lineas].sort((a,b)=>b._montoConIVA-a._montoConIVA);
+  qs('mf-tbl-lineas').innerHTML = lineasOrdenadas.map(r=>`<tr>
+    <td>${r._empName}</td>
+    <td>${r._periodo}</td>
+    <td style="text-align:right" class="mono">${fmtHrs(r._qty)}</td>
+    <td class="amt">${fmt(r._montoSinIVA)}</td>
+    <td class="amt">${fmt(r._montoConIVA)}</td></tr>`).join('')
+    || '<tr><td colspan="5" class="empty">No hay registros de horas ligados a esta factura</td></tr>';
+
+  qs('modal-factura').classList.add('active');
+}
+function cerrarModalFactura(){ qs('modal-factura').classList.remove('active'); }
+
+// ════════════════════════════════════════════════════════════
+//  MODAL — Detalle factura por factura de un empleado (horas + montos)
+// ════════════════════════════════════════════════════════════
+function verFacturasEmpleado(codigo){
+  const lineas = cruceRows.filter(r => r._empCod === codigo);
+  const nombre = empName(codigo) || codigo;
+
+  qs('me-titulo').textContent = nombre;
+  qs('me-sub').textContent = codigo;
+
+  const invByNumber = {};
+  DATA.facturas.forEach(f => { invByNumber[f.numero] = f; });
+
+  const porFactura = {};
+  lineas.forEach(r => {
+    const key = r._factura;
+    if (!porFactura[key]) porFactura[key] = { factura: key, cliente: r._cliente, horas: 0, sinIVA: 0, conIVA: 0 };
+    porFactura[key].horas += r._qty;
+    porFactura[key].sinIVA += r._montoSinIVA;
+    porFactura[key].conIVA += r._montoConIVA;
+  });
+  const facRows = Object.values(porFactura).sort((a,b)=>b.conIVA-a.conIVA);
+
+  const totalHoras = lineas.reduce((s,r)=>s+r._qty, 0);
+  const totalSinIVA = lineas.reduce((s,r)=>s+r._montoSinIVA, 0);
+  const totalConIVA = lineas.reduce((s,r)=>s+r._montoConIVA, 0);
+  const numFacturas = facRows.filter(f=>f.factura!=='—').length;
+
+  qs('me-horas').textContent = fmtHrs(totalHoras) + ' h';
+  qs('me-facturas').textContent = numFacturas;
+  qs('me-sinIVA').textContent = fmt(totalSinIVA);
+  qs('me-conIVA').textContent = fmt(totalConIVA);
+
+  qs('me-tbl-facturas').innerHTML = facRows.map(f=>{
+    const inv = invByNumber[f.factura];
+    return `<tr>
+      <td>${f.factura!=='—' ? `<span class="badge b-amber">${f.factura}</span>` : '<span class="badge b-gray">Sin facturar</span>'}</td>
+      <td style="color:var(--t3);font-size:12px">${f.cliente||'—'}</td>
+      <td class="mono">${inv ? fd(inv.fecha) : '—'}</td>
+      <td style="text-align:right" class="mono">${fmtHrs(f.horas)}</td>
+      <td class="amt">${fmt(f.sinIVA)}</td>
+      <td class="amt" style="color:var(--t3)">${fmt(f.conIVA-f.sinIVA)}</td>
+      <td class="amt green">${fmt(f.conIVA)}</td></tr>`;
+  }).join('') || '<tr><td colspan="7" class="empty">Sin facturas para este empleado en el período</td></tr>';
+
+  qs('modal-empleado').classList.add('active');
+}
+function cerrarModalEmpleado(){ qs('modal-empleado').classList.remove('active'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { cerrarModalFactura(); cerrarModalEmpleado(); } });
 
 function renderCompras(){
   const c = DATA.compras;
@@ -1325,7 +1518,7 @@ function renderEmpleados(){
     <td class="mono" style="color:var(--t3)">${e.codigo}</td>
     <td class="amt green">${e.horas.toFixed(1)}h</td></tr>`).join('') || '<tr><td colspan="4" class="empty">Sin horas en el período</td></tr>';
 
-  qs('tbl-emp-dir').innerHTML = DATA.empleadosDir.map(e=>`<tr>
+  qs('tbl-emp-dir').innerHTML = DATA.empleadosDir.map(e=>`<tr class="row-clickable" onclick="buscarEmpleadoDesdeDirectorio('${(e.codigo||'').replace(/'/g,"\\'")}')" title="Ver detalle de este empleado">
     <td class="mono" style="color:var(--t3)">${e.codigo}</td><td style="font-size:11px">${e.nombre}</td></tr>`).join('')
     || '<tr><td colspan="2" class="empty">Sin datos</td></tr>';
 
@@ -1338,6 +1531,15 @@ function renderEmpleados(){
 // en las horas totales de esa factura (ver procesarDatos).
 function aplicarFiltrosEmpDetalle(){ empDetallePage = 0; renderEmpDetalle(); }
 
+// Clic en el Directorio Completo → busca ese empleado en "Facturación Detallada por Empleado"
+// (modo total) y hace scroll hasta la tabla, igual que si lo hubieras tipeado a mano.
+function buscarEmpleadoDesdeDirectorio(codigo){
+  qs('f-emp-search').value = empleadosMap[codigo] || codigo;
+  qs('f-emp-group').value = 'total';
+  aplicarFiltrosEmpDetalle();
+  qs('f-emp-search').closest('.card').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
 function renderEmpDetalle(){
   const wrap = qs('tbl-emp-detalle-wrap');
   if (!wrap) return;
@@ -1346,11 +1548,13 @@ function renderEmpDetalle(){
 
   const rows = cruceRows.filter(r => {
     if (!r._empCod) return false;
+    if (SOCIOS_RECURSO_EXCLUIR.includes(r._empCod)) return false;
     if (!search) return true;
     return (r._empName||'').toUpperCase().includes(search) || (r._empCod||'').toUpperCase().includes(search);
   });
 
   const hayCostoSinHoras = mode === 'total' && Object.keys(DATA.costosEmpleado).some(c => {
+    if (SOCIOS_RECURSO_EXCLUIR.includes(c)) return false;
     const nombre = empleadosMap[c] || c;
     return !search || nombre.toUpperCase().includes(search) || c.toUpperCase().includes(search);
   });
@@ -1412,6 +1616,7 @@ function renderEmpDetalle(){
     // Empleados con nómina/costo pero SIN horas facturadas (ej. administrativos) — sólo si matchean la búsqueda.
     Object.keys(DATA.costosEmpleado).forEach(c=>{
       if (agg[c]) return;
+      if (SOCIOS_RECURSO_EXCLUIR.includes(c)) return;
       const nombre = empleadosMap[c] || c;
       if (search && !nombre.toUpperCase().includes(search) && !c.toUpperCase().includes(search)) return;
       agg[c] = { empleado: nombre, codigo: c, horas:0, sinIVA:0, conIVA:0, facturas:new Set() };
@@ -1423,7 +1628,7 @@ function renderEmpDetalle(){
         costoNomina:costo.nomina, costoOtro:costo.otroCostoDirecto, costoTotal, margen:e.sinIVA-costoTotal };
     }).sort((a,b)=>b.horas-a.horas || b.costoTotal-a.costoTotal);
     theadHtml = `<tr><th>Empleado</th><th>Código</th><th style="text-align:right">Horas</th><th>Facturas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th><th style="text-align:right">Nómina</th><th style="text-align:right">Otro Costo</th><th style="text-align:right">Margen</th></tr>`;
-    rowHtml = e => `<tr>
+    rowHtml = e => `<tr class="row-clickable" onclick="verFacturasEmpleado('${(e.codigo||'').replace(/'/g,"\\'")}')" title="Ver detalle factura por factura">
       <td style="color:var(--a3);font-weight:600">${e.empleado}</td><td class="mono">${e.codigo}</td>
       <td class="hrs">${e.horas.toFixed(2)}</td><td style="color:var(--t3)">${e.facturas}</td>
       <td class="amt">${fmt(e.sinIVA)}</td><td class="amt" style="color:var(--t3)">${fmt(e.iva)}</td><td class="amt green">${fmt(e.conIVA)}</td>
@@ -1725,6 +1930,8 @@ async function cargarTodo(year, opts={}){
       await cargarCuentas();
       setLoadingMsg('Cargando dimensiones de nómina/costo directo…');
       await cargarDimensionSetsRecurso();
+      setLoadingMsg('Cargando períodos de tarea (Job_Task_Lines)…');
+      await cargarJobTaskLines();
     }
     setLoadingMsg(`Cargando ventas, compras y contabilidad ${year==='all'?'(todos los años)':year}…`);
     await cargarPeriodo(year);
@@ -1759,5 +1966,77 @@ qs('f-year').value = '2026';
 cargarTodo('2026');
 
 </script>
+<div class="modal-overlay" id="modal-factura" onclick="if(event.target===this) cerrarModalFactura()">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="mf-titulo">Factura</div>
+        <div class="modal-sub" id="mf-sub">—</div>
+      </div>
+      <button class="modal-close" onclick="cerrarModalFactura()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-kpis">
+        <div class="modal-kpi"><div class="k-label">Subtotal</div><div class="k-val" id="mf-subtotal">—</div></div>
+        <div class="modal-kpi"><div class="k-label">IVA</div><div class="k-val" id="mf-iva">—</div></div>
+        <div class="modal-kpi"><div class="k-label">Total</div><div class="k-val" id="mf-total">—</div></div>
+        <div class="modal-kpi"><div class="k-label">Horas totales</div><div class="k-val" id="mf-horas">—</div></div>
+      </div>
+
+      <div class="modal-section-title">Por período de servicio</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Período</th><th style="text-align:right">Horas</th><th style="text-align:right">Monto sin IVA</th><th style="text-align:right">Monto con IVA</th></tr></thead>
+          <tbody id="mf-tbl-categoria"></tbody>
+        </table>
+      </div>
+
+      <div class="modal-section-title">Por empleado</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Empleado</th><th style="text-align:right">Horas</th><th style="text-align:right">Monto sin IVA</th><th style="text-align:right">Monto con IVA</th></tr></thead>
+          <tbody id="mf-tbl-empleado"></tbody>
+        </table>
+      </div>
+
+      <div class="modal-section-title">Detalle línea por línea</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Empleado</th><th>Período</th><th style="text-align:right">Horas</th><th style="text-align:right">Monto sin IVA</th><th style="text-align:right">Monto con IVA</th></tr></thead>
+          <tbody id="mf-tbl-lineas"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-empleado" onclick="if(event.target===this) cerrarModalEmpleado()">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="me-titulo">Empleado</div>
+        <div class="modal-sub" id="me-sub">—</div>
+      </div>
+      <button class="modal-close" onclick="cerrarModalEmpleado()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-kpis">
+        <div class="modal-kpi"><div class="k-label">Horas totales</div><div class="k-val" id="me-horas">—</div></div>
+        <div class="modal-kpi"><div class="k-label">Facturas</div><div class="k-val" id="me-facturas">—</div></div>
+        <div class="modal-kpi"><div class="k-label">Total sin IVA</div><div class="k-val" id="me-sinIVA">—</div></div>
+        <div class="modal-kpi"><div class="k-label">Total con IVA</div><div class="k-val" id="me-conIVA">—</div></div>
+      </div>
+
+      <div class="modal-section-title">Detalle factura por factura</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>N° Factura</th><th>Cliente</th><th>Fecha</th><th style="text-align:right">Horas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th></tr></thead>
+          <tbody id="me-tbl-facturas"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
