@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -126,7 +126,7 @@ tfoot td { padding: 10px 13px; font-family: var(--mono); font-weight: 700; borde
     </select>
     <span class="fx-badge" id="fx-badge"></span>
     <button class="btn btn-amber" id="btn-usd" onclick="toggleUSD()">💵 Ver en USD</button>
-    <button class="btn btn-ghost" id="btn-theme" onclick="toggleTheme()">☀️ Ver en claro</button>
+    <button class="btn btn-ghost" id="btn-theme" onclick="toggleTheme()">🌙 Ver en oscuro</button>
     <button class="btn btn-primary" id="btn-refresh" onclick="recargar()">↻ Actualizar</button>
     <span id="sesion-email" style="font-size:11px;color:var(--t3);font-family:var(--mono)"></span>
     <button class="btn btn-ghost" onclick="cerrarSesionYRedirigir()">Salir</button>
@@ -260,7 +260,7 @@ let costRows = [];        // líneas de costo directo (empCod, fecha, cuenta, ti
 let porEmpMes = {};       // "empCod||YYYY-MM" -> {horas, sinIVA, conIVA, costoNomina, costoOtro, facturas:Set}
 let porEmpMesJob = {};    // "empCod||YYYY-MM||Job_No" -> ídem + costo NÓMINA/OTRO prorrateado por horas dentro del mes
 let fxRate = null, showUSD = false;
-let theme = 'dark';
+let theme = 'light';
 let firstLoadDone = false;
 let charts = {};
 
