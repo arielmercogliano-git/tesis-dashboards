@@ -900,6 +900,10 @@ function procesarDatos(){
     const empCod = u.Global_Dimension_2_Code || '';
     const factura = sale?.Document_No || '—';
     const invInfo = invByNumber[factura];
+    // Monto propio de ESTA línea (el valor/hora de este empleado en esta tarea), no un
+    // promedio prorrateado del total de la factura — cada empleado puede tener su propia tarifa.
+    const montoSinIVA = Math.abs(parseFloat(u.Total_Price||0));
+    const montoConIVA = montoSinIVA * 1.16;
     return {
       _empCod: empCod,
       _empName: empName(empCod) || empCod || '—',
@@ -914,27 +918,8 @@ function procesarDatos(){
       _factura: factura,
       _cliente: invInfo?.customerName || '—',
       _saleTotal: sales.reduce((s,x)=>s+parseFloat(x.Total_Price||0),0),
-      _montoSinIVA: 0, _montoConIVA: 0, _iva: 0, // se completan abajo (prorateo por factura)
+      _montoSinIVA: montoSinIVA, _montoConIVA: montoConIVA, _iva: montoConIVA - montoSinIVA,
     };
-  });
-
-  // ── Prorateo de facturación por empleado: cuando varios empleados/registros
-  // comparten la misma factura, repartimos el importe de la factura (con y sin IVA)
-  // en proporción a las horas de cada registro Usage. ──
-  const horasPorFactura = {};
-  cruceRows.forEach(r => {
-    if (r._factura === '—') return;
-    horasPorFactura[r._factura] = (horasPorFactura[r._factura]||0) + r._qty;
-  });
-  cruceRows.forEach(r => {
-    if (r._factura === '—') return;
-    const inv = invByNumber[r._factura];
-    const totalHoras = horasPorFactura[r._factura];
-    if (!inv || !totalHoras) return;
-    const share = totalHoras > 0 ? r._qty / totalHoras : 0;
-    r._montoSinIVA = (inv.totalAmountExcludingTax||0) * share;
-    r._montoConIVA = (inv.totalAmountIncludingTax||0) * share;
-    r._iva = r._montoConIVA - r._montoSinIVA;
   });
 
   // ── Ventas (con alias de clientes: mismas razones sociales = mismo cliente) ──

@@ -506,21 +506,14 @@ function isSale(r){ return String(r.Entry_Type||'').toLowerCase() === 'sale'; }
 let facturacionPorEmpleado = {};
 function buildFacturacionPorEmpleado(rawMovs){
   const usageRows = rawMovs.filter(isUsage);
-  const saleRows = rawMovs.filter(isSale);
-  const saleByKey = {};
-  saleRows.forEach(s => { saleByKey[`${s.Job_No}||${s.Job_Task_No}`] = s; });
-  const qtyByKey = {};
-  usageRows.forEach(u => { const k = `${u.Job_No}||${u.Job_Task_No}`; qtyByKey[k] = (qtyByKey[k]||0) + parseFloat(u.Quantity||0); });
   facturacionPorEmpleado = {};
   usageRows.forEach(u => {
     const empCod = u.Global_Dimension_2_Code;
     if (!empCod) return;
-    const k = `${u.Job_No}||${u.Job_Task_No}`;
-    const sale = saleByKey[k];
     const qty = parseFloat(u.Quantity||0);
-    const totalQty = qtyByKey[k] || qty;
-    const share = totalQty > 0 ? qty/totalQty : 0;
-    const sinIVA = sale ? Math.abs(parseFloat(sale.Total_Price||0)) * share : 0;
+    // Monto propio de ESTA línea (el valor/hora de este empleado en esta tarea), no un promedio
+    // prorrateado de la factura agregada — cada empleado puede tener una tarifa distinta.
+    const sinIVA = Math.abs(parseFloat(u.Total_Price||0));
     const conIVA = sinIVA * 1.16;
     const mk = mesKeyOf(u.Posting_Date);
     if (!facturacionPorEmpleado[empCod]) facturacionPorEmpleado[empCod] = {};

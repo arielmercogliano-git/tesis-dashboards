@@ -437,26 +437,23 @@ function procesarDatos(){
     return {
       empCod: u.Global_Dimension_2_Code || '', job: u.Job_No||'—', task: u.Job_Task_No||'—',
       qty: parseFloat(u.Quantity||0), fecha, factura, key: k,
+      total: parseFloat(u.Total_Price||0), // monto propio de ESTA línea (valor/hora real de este empleado)
       mes: periodoTarea ? periodoTarea.mes : fecha.slice(0,7),
       mesFuente: periodoTarea ? 'tarea' : 'carga',
       mesLabel: periodoTarea ? periodoTarea.label : null,
     };
   });
 
-  // horas totales por factura (para prorratear el monto de la factura entre todos los que la comparten)
-  const horasPorFactura = {};
-  cruce.forEach(r => { if (r.factura!=='—') horasPorFactura[r.factura] = (horasPorFactura[r.factura]||0) + r.qty; });
-
   cruceRows = cruce.map(r => {
-    if (r.factura==='—' || !invByNumber[r.factura]) return { ...r, empName: empName(r.empCod)||r.empCod||'—', cliente:'—', montoSinIVA:0, montoConIVA:0, fechaFactura:null };
-    const inv = invByNumber[r.factura];
-    const totalHorasFac = horasPorFactura[r.factura] || 1;
-    const share = r.qty / totalHorasFac;
+    const inv = r.factura!=='—' ? invByNumber[r.factura] : null;
+    // Monto propio de la línea (no prorrateo del total de la factura por horas — cada
+    // empleado puede tener su propia tarifa, así que no hay que promediarla entre todos).
+    const montoSinIVA = Math.abs(r.total);
+    const montoConIVA = montoSinIVA * 1.16;
     return {
-      ...r, empName: empName(r.empCod)||r.empCod||'—', cliente: inv.customerName||'—',
-      fechaFactura: inv.postingDate||null,
-      montoSinIVA: (inv.totalAmountExcludingTax||0) * share,
-      montoConIVA: (inv.totalAmountIncludingTax||0) * share,
+      ...r, empName: empName(r.empCod)||r.empCod||'—', cliente: inv?.customerName||'—',
+      fechaFactura: inv?.postingDate||null,
+      montoSinIVA, montoConIVA,
     };
   });
 
