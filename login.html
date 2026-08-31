@@ -65,6 +65,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
     <div class="dashboards active">
       <a href="tesis_command_center.html">📊 Command Center</a>
       <a href="rentabilidad_empleados.html">💼 Rentabilidad por Empleado</a>
+      <a href="estados_financieros.html">📈 Estados Financieros</a>
     </div>
     <div class="link" onclick="cerrarSesion()">Cerrar sesión</div>
   </div>
@@ -72,7 +73,6 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 
 <script>
 const PROXY = 'https://bc-proxy-tesis-production.up.railway.app';
-const API_KEY = 'A9L-ySuPiO-uy8o0ZzOfj3Bi7igRyMD2NsyRWwwesks';
 const SESSION_KEY = 'tesis_session_token';
 const SESSION_EMAIL_KEY = 'tesis_session_email';
 
@@ -90,7 +90,7 @@ async function pedirCodigo(){
   setMsg('msg-email','Enviando…','');
   try{
     const r = await fetch(`${PROXY}/auth/request-code`, {
-      method:'POST', headers:{'Content-Type':'application/json','x-api-key':API_KEY},
+      method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ email })
     });
     const d = await r.json();
@@ -112,7 +112,7 @@ async function verificarCodigo(){
   setMsg('msg-code','Verificando…','');
   try{
     const r = await fetch(`${PROXY}/auth/verify-code`, {
-      method:'POST', headers:{'Content-Type':'application/json','x-api-key':API_KEY},
+      method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ email: emailActual, code })
     });
     const d = await r.json();

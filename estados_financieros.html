@@ -232,7 +232,6 @@ tr.section-header td { font-size:10px; text-transform:uppercase; letter-spacing:
 
 // ── CONFIG ──────────────────────────────────────────────────
 const PROXY = 'https://bc-proxy-tesis-production.up.railway.app';
-const API_KEY = 'A9L-ySuPiO-uy8o0ZzOfj3Bi7igRyMD2NsyRWwwesks';
 const TENANT_ID = '12fb0059-aa40-4564-97db-c6ffc7d7543d';
 const COMPANY_URL_NAME = "My%20Company";
 const V2_BASE = `https://api.businesscentral.dynamics.com/v2.0/${TENANT_ID}/Production/api/v2.0`;
@@ -280,7 +279,7 @@ async function getToken(){
   if (TOKEN && Date.now() < TOKEN_EXP - 60000) return TOKEN;
   const r = await fetch(`${PROXY}/token`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY, 'x-session-token': getSessionToken()||'' },
+    headers: { 'Content-Type': 'application/json', 'x-session-token': getSessionToken()||'' },
     body: JSON.stringify({})
   });
   if (r.status === 401) { cerrarSesionYRedirigir(); throw new Error('Sesión vencida'); }
@@ -292,7 +291,7 @@ async function getToken(){
 async function bcFetch(url){
   const tok = await getToken();
   const r = await fetch(`${PROXY}/bc?token=${encodeURIComponent(tok)}&url=${encodeURIComponent(url)}`, {
-    headers: { 'x-api-key': API_KEY, 'x-session-token': getSessionToken()||'' }
+    headers: { 'x-session-token': getSessionToken()||'' }
   });
   if (r.status === 401) { cerrarSesionYRedirigir(); throw new Error('Sesión vencida'); }
   if (!r.ok) { const e = await r.text(); throw new Error(`/bc ${r.status}: ${e.slice(0,300)}`); }
