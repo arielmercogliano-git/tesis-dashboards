@@ -1565,11 +1565,11 @@ function renderEmpDetalle(){
       return { ...e, facturas:e.facturas.size, iva:e.conIVA-e.sinIVA,
         costoNomina:costo.nomina, costoOtro:costo.otroCostoDirecto, costoTotal, margen:e.sinIVA-costoTotal };
     }).sort((a,b)=> a.empleado.localeCompare(b.empleado) || a.mes.localeCompare(b.mes));
-    theadHtml = `<tr><th>Empleado</th><th>Código</th><th>Mes</th><th style="text-align:right">Horas</th><th>Facturas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th><th style="text-align:right">Nómina</th><th style="text-align:right">Otro Costo</th><th style="text-align:right">Margen</th></tr>`;
+    theadHtml = `<tr><th>Empleado</th><th>Código</th><th>Mes</th><th style="text-align:right">Horas</th><th>Facturas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">Valor/Hora</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th><th style="text-align:right">Nómina</th><th style="text-align:right">Otro Costo</th><th style="text-align:right">Margen</th></tr>`;
     rowHtml = e => `<tr>
       <td style="color:var(--a3);font-weight:600">${e.empleado}</td><td class="mono">${e.codigo}</td>
       <td class="mono">${e.mes}</td><td class="hrs">${e.horas.toFixed(2)}</td><td style="color:var(--t3)">${e.facturas}</td>
-      <td class="amt">${fmt(e.sinIVA)}</td><td class="amt" style="color:var(--t3)">${fmt(e.iva)}</td><td class="amt green">${fmt(e.conIVA)}</td>
+      <td class="amt">${fmt(e.sinIVA)}</td><td class="amt" style="color:var(--t3)">${e.horas>0?fmt(e.sinIVA/e.horas):'—'}</td><td class="amt" style="color:var(--t3)">${fmt(e.iva)}</td><td class="amt green">${fmt(e.conIVA)}</td>
       <td class="amt" style="color:var(--red)">${fmt(e.costoNomina)}</td><td class="amt" style="color:var(--amber)">${fmt(e.costoOtro)}</td>
       <td class="amt" style="color:${e.margen>=0?'var(--green)':'var(--red)'}">${fmt(e.margen)}</td>
     </tr>`;
@@ -1582,12 +1582,12 @@ function renderEmpDetalle(){
     });
     grouped = Object.values(agg).map(e=>({...e, iva:e.conIVA-e.sinIVA}))
       .sort((a,b)=> a.empleado.localeCompare(b.empleado) || (b.horas-a.horas));
-    theadHtml = `<tr><th>Empleado</th><th>Código</th><th>N° Factura</th><th>Cliente</th><th style="text-align:right">Horas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th></tr>`;
+    theadHtml = `<tr><th>Empleado</th><th>Código</th><th>N° Factura</th><th>Cliente</th><th style="text-align:right">Horas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">Valor/Hora</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th></tr>`;
     rowHtml = e => `<tr>
       <td style="color:var(--a3);font-weight:600">${e.empleado}</td><td class="mono">${e.codigo}</td>
       <td>${e.factura!=='—' ? `<span class="badge b-amber">${e.factura}</span>` : '<span class="badge b-gray">—</span>'}</td>
       <td style="color:var(--t3);font-size:12px">${e.cliente}</td><td class="hrs">${e.horas.toFixed(2)}</td>
-      <td class="amt">${fmt(e.sinIVA)}</td><td class="amt" style="color:var(--t3)">${fmt(e.iva)}</td><td class="amt green">${fmt(e.conIVA)}</td>
+      <td class="amt">${fmt(e.sinIVA)}</td><td class="amt" style="color:var(--t3)">${e.horas>0?fmt(e.sinIVA/e.horas):'—'}</td><td class="amt" style="color:var(--t3)">${fmt(e.iva)}</td><td class="amt green">${fmt(e.conIVA)}</td>
     </tr>`;
   } else { // 'total' — un renglón por empleado en todo el período seleccionado
     const agg = {};
@@ -1611,11 +1611,11 @@ function renderEmpDetalle(){
       return { ...e, facturas:e.facturas.size, iva:e.conIVA-e.sinIVA,
         costoNomina:costo.nomina, costoOtro:costo.otroCostoDirecto, costoTotal, margen:e.sinIVA-costoTotal };
     }).sort((a,b)=>b.horas-a.horas || b.costoTotal-a.costoTotal);
-    theadHtml = `<tr><th>Empleado</th><th>Código</th><th style="text-align:right">Horas</th><th>Facturas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th><th style="text-align:right">Nómina</th><th style="text-align:right">Otro Costo</th><th style="text-align:right">Margen</th></tr>`;
+    theadHtml = `<tr><th>Empleado</th><th>Código</th><th style="text-align:right">Horas</th><th>Facturas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">Valor/Hora</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th><th style="text-align:right">Nómina</th><th style="text-align:right">Otro Costo</th><th style="text-align:right">Margen</th></tr>`;
     rowHtml = e => `<tr class="row-clickable" onclick="verFacturasEmpleado('${(e.codigo||'').replace(/'/g,"\\'")}')" title="Ver detalle factura por factura">
       <td style="color:var(--a3);font-weight:600">${e.empleado}</td><td class="mono">${e.codigo}</td>
       <td class="hrs">${e.horas.toFixed(2)}</td><td style="color:var(--t3)">${e.facturas}</td>
-      <td class="amt">${fmt(e.sinIVA)}</td><td class="amt" style="color:var(--t3)">${fmt(e.iva)}</td><td class="amt green">${fmt(e.conIVA)}</td>
+      <td class="amt">${fmt(e.sinIVA)}</td><td class="amt" style="color:var(--t3)">${e.horas>0?fmt(e.sinIVA/e.horas):'—'}</td><td class="amt" style="color:var(--t3)">${fmt(e.iva)}</td><td class="amt green">${fmt(e.conIVA)}</td>
       <td class="amt" style="color:var(--red)">${fmt(e.costoNomina)}</td><td class="amt" style="color:var(--amber)">${fmt(e.costoOtro)}</td>
       <td class="amt" style="color:${e.margen>=0?'var(--green)':'var(--red)'}">${fmt(e.margen)}</td>
     </tr>`;

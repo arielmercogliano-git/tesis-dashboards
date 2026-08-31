@@ -670,6 +670,7 @@ function renderTablaAgregada(filas){
       ${showProyCol ? `<td style="color:var(--purple);font-size:11px">${e.job||'—'}</td>` : ''}
       <td class="hrs">${e.horas.toFixed(2)}</td>
       <td class="amt">${fmt(e.sinIVA)}</td>
+      <td class="amt" style="color:var(--t3)">${e.horas>0?fmt(e.sinIVA/e.horas):'—'}</td>
       <td class="amt" style="color:var(--t3)">${fmt(e.conIVA-e.sinIVA)}</td>
       <td class="amt green">${fmt(e.conIVA)}</td>
       <td class="amt" style="color:var(--red)">${fmt(e.costoNomina)}</td>
@@ -685,13 +686,13 @@ function renderTablaAgregada(filas){
   wrap.innerHTML = `<table>
     <thead><tr>
       ${showEmpCol ? '<th>Empleado</th><th>Código</th>' : ''}
-      <th>Mes</th>${showProyCol ? '<th>Proyecto</th>' : ''}<th style="text-align:right">Horas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th>
+      <th>Mes</th>${showProyCol ? '<th>Proyecto</th>' : ''}<th style="text-align:right">Horas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">Valor/Hora</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th>
       <th style="text-align:right">Nómina</th><th style="text-align:right">Otro Costo</th><th style="text-align:right">Margen</th><th style="text-align:right">Margen %</th>
     </tr></thead>
     <tbody>${rowsHtml}</tbody>
     <tfoot><tr>
       <td colspan="${colspanTotal}">TOTAL</td>${showProyCol ? '<td></td>' : ''}
-      <td class="amt">${totHoras.toFixed(2)}</td><td class="amt">${fmt(totSin)}</td><td class="amt">${fmt(totCon-totSin)}</td><td class="amt">${fmt(totCon)}</td>
+      <td class="amt">${totHoras.toFixed(2)}</td><td class="amt">${fmt(totSin)}</td><td class="amt" style="color:var(--t3)">${totHoras>0?fmt(totSin/totHoras):'—'}</td><td class="amt">${fmt(totCon-totSin)}</td><td class="amt">${fmt(totCon)}</td>
       <td class="amt" style="color:var(--red)">${fmt(totNom)}</td><td class="amt" style="color:var(--amber)">${fmt(totOtro)}</td>
       <td class="amt" style="color:${totMargen>=0?'var(--green)':'var(--red)'}">${fmt(totMargen)}</td>
       <td class="amt" style="color:${totMargen>=0?'var(--green)':'var(--red)'}">${totMargenPct!=null?totMargenPct.toFixed(1)+'%':'—'}</td>
@@ -760,11 +761,11 @@ function renderDetalle(){
     <th>Período</th><th>Fecha Factura</th><th>Rezago</th>
     ${proy==='all' ? '<th>Proyecto</th>' : ''}
     <th>Tarea</th><th style="text-align:right">Horas</th><th>N° Factura</th><th>Cliente</th>
-    <th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th>
+    <th style="text-align:right">Sin IVA</th><th style="text-align:right">Valor/Hora</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th>
   </tr>`;
   qs('fact-detalle-sub').textContent = `${factDetalle.length} registros de horas`;
   let tS=0,tC=0,tH=0;
-  const totalColsFact = 10 + (emp==='all'?1:0) + (proy==='all'?1:0);
+  const totalColsFact = 11 + (emp==='all'?1:0) + (proy==='all'?1:0);
   qs('tbl-fact-detalle').innerHTML = factDetalle.map(r=>{
     tH+=r.qty; tS+=r.montoSinIVA; tC+=r.montoConIVA;
     let rezago = '—';
@@ -781,11 +782,11 @@ function renderDetalle(){
       <td class="hrs">${r.qty.toFixed(2)}</td>
       <td>${r.factura!=='—' ? `<span class="badge b-amber">${r.factura}</span>` : '<span style="color:var(--t3)">—</span>'}</td>
       <td style="font-size:11px;color:var(--t3)">${r.cliente}</td>
-      <td class="amt">${fmt(r.montoSinIVA)}</td><td class="amt" style="color:var(--t3)">${fmt(r.montoConIVA-r.montoSinIVA)}</td><td class="amt green">${fmt(r.montoConIVA)}</td>
+      <td class="amt">${fmt(r.montoSinIVA)}</td><td class="amt" style="color:var(--t3)">${r.qty>0?fmt(r.montoSinIVA/r.qty):'—'}</td><td class="amt" style="color:var(--t3)">${fmt(r.montoConIVA-r.montoSinIVA)}</td><td class="amt green">${fmt(r.montoConIVA)}</td>
     </tr>`;
   }).join('') || `<tr><td colspan="${totalColsFact}" class="empty">Sin registros de horas en el período</td></tr>`;
   const colspanFactTotal = 4 + (emp==='all'?1:0) + (proy==='all'?1:0); // hasta (incl.) la columna Tarea
-  qs('tbl-fact-detalle-foot').innerHTML = factDetalle.length ? `<tr><td colspan="${colspanFactTotal}">TOTAL</td><td class="amt">${tH.toFixed(2)}</td><td colspan="2"></td><td class="amt">${fmt(tS)}</td><td class="amt">${fmt(tC-tS)}</td><td class="amt">${fmt(tC)}</td></tr>` : '';
+  qs('tbl-fact-detalle-foot').innerHTML = factDetalle.length ? `<tr><td colspan="${colspanFactTotal}">TOTAL</td><td class="amt">${tH.toFixed(2)}</td><td colspan="2"></td><td class="amt">${fmt(tS)}</td><td class="amt" style="color:var(--t3)">${tH>0?fmt(tS/tH):'—'}</td><td class="amt">${fmt(tC-tS)}</td><td class="amt">${fmt(tC)}</td></tr>` : '';
 
   // ── Tabla costo detalle: dos formatos distintos según el modo ──
   if (!modoProyectoPuro){

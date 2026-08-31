@@ -663,7 +663,11 @@ function finalizarDesglose(items){
   items.sort((a,b)=>Math.abs(b.monto)-Math.abs(a.monto));
   const total = items.reduce((s,i)=>s+i.monto,0);
   const maxAbs = Math.max(...items.map(i=>Math.abs(i.monto)), 1);
-  items.forEach(i=>{ i.pct = total ? (100*i.monto/total) : 0; i.pesoRel = Math.abs(i.monto)/maxAbs*100; });
+  items.forEach(i=>{
+    i.pct = total ? (100*i.monto/total) : 0;
+    i.pesoRel = Math.abs(i.monto)/maxAbs*100;
+    if (i.horas != null) i.valorHora = i.horas>0 ? i.monto/i.horas : null;
+  });
   return { total, items };
 }
 function desgloseLineaPL(bucketKey, por, mesKeys){
@@ -672,12 +676,15 @@ function desgloseLineaPL(bucketKey, por, mesKeys){
   const cuentaNums = new Set(cuentasDeBucketPL(bucketKey).map(c=>c.number));
   const esDividendos = bucketKey==='dividendos';
 
-  // Ingresos × Persona: la facturación no suele venir dimensionada por RECURSO,
-  // así que reusamos el prorrateo por horas ya calculado (mismo mecanismo que en Costo directo).
+  // Ingresos × Persona: el valor/hora se calcula empleado por empleado — dividiendo lo
+  // facturado (monto propio de cada línea de horas en MovsProyecto, sin promediar con nadie
+  // más) entre las horas de ese empleado. Reusa el mismo cálculo ya corregido para Costo directo.
   if (bucketKey==='ingresos' && por==='persona') {
     const empCods = Object.keys(facturacionPorEmpleado).filter(c=>!SOCIOS_RECURSO.includes(c));
-    const items = empCods.map(c=>({ label: empleadosMap[c]||c, monto: facturacionEmpleadoEnMeses(c, mesKeys).sinIVA }))
-      .filter(i=>Math.abs(i.monto)>0.5);
+    const items = empCods.map(c=>{
+      const f = facturacionEmpleadoEnMeses(c, mesKeys);
+      return { label: empleadosMap[c]||c, monto: f.sinIVA, horas: f.horas };
+    }).filter(i=>Math.abs(i.monto)>0.5);
     return finalizarDesglose(items);
   }
 
@@ -752,16 +759,18 @@ function renderModalPL(){
     </div>`;
 
   let tabla;
+  const tieneHoras = items.length && items[0].horas != null;
   if (periodo === 'total') {
     tabla = `<div class="tbl-scroll"><table>
-      <thead><tr><th style="text-align:left">${porLabel}</th><th style="text-align:left">Peso relativo</th><th>Monto</th><th>%</th></tr></thead>
+      <thead><tr><th style="text-align:left">${porLabel}</th><th style="text-align:left">Peso relativo</th>${tieneHoras?'<th>Horas</th><th>Valor/Hora</th>':''}<th>Monto</th><th>%</th></tr></thead>
       <tbody>` +
       (items.length ? items.map(i => `<tr>
         <td>${i.label}</td>
         <td style="min-width:160px"><div style="background:var(--s3);border-radius:4px;height:8px;overflow:hidden"><div style="width:${i.pesoRel}%;height:100%;background:${i.monto<0?'var(--red)':'var(--green)'}"></div></div></td>
+        ${tieneHoras?`<td class="mono" style="text-align:right">${fmtHrs(i.horas)}</td><td class="amt" style="color:var(--t3)">${i.valorHora!=null?fmt(i.valorHora):'—'}</td>`:''}
         <td class="${amtClass(i.monto)}">${fmt(i.monto)}</td>
         <td style="color:var(--t3)">${i.pct.toFixed(0)}%</td>
-      </tr>`).join('') : '<tr><td colspan="4" class="empty">Sin movimientos en el período</td></tr>')
+      </tr>`).join('') : `<tr><td colspan="${tieneHoras?6:4}" class="empty">Sin movimientos en el período</td></tr>`)
       + '</tbody></table></div>';
   } else {
     // Matriz: cada fila (persona/cuenta/contrato) × columnas de mes o trimestre, en el mismo
