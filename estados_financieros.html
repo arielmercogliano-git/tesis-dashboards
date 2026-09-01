@@ -503,10 +503,73 @@ function gruposPorPeriodo(periodo){
 // ════════════════════════════════════════════════════════════
 function isUsage(r){ return String(r.Entry_Type||'').toLowerCase() === 'usage'; }
 function isSale(r){ return String(r.Entry_Type||'').toLowerCase() === 'sale'; }
+
+// ── Período real de facturación (mismo mecanismo ya usado en los otros dashboards) ──
+const MESES_ES = {ENERO:1,FEBRERO:2,MARZO:3,ABRIL:4,MAYO:5,JUNIO:6,JULIO:7,AGOSTO:8,SEPTIEMBRE:9,OCTUBRE:10,NOVIEMBRE:11,DICIEMBRE:12};
+const MESES_ABR = {ENE:1,FEB:2,MAR:3,ABR:4,MAY:5,JUN:6,JUL:7,AGO:8,SEP:9,OCT:10,NOV:11,DIC:12};
+function diasEnMes(anio,mes){ return new Date(anio, mes, 0).getDate(); }
+function isoDate(y,m,d){ return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+function mesConMayoriaDeDias(d1,m1,y1,d2,m2,y2){
+  const inicio = new Date(y1,m1-1,d1), fin = new Date(y2,m2-1,d2);
+  if (isNaN(inicio)||isNaN(fin)||fin<inicio) return `${y1}-${String(m1).padStart(2,'0')}`;
+  const dias = {}; let cur = new Date(inicio), guard = 0;
+  while (cur<=fin && guard<400){ const k = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}`; dias[k]=(dias[k]||0)+1; cur.setDate(cur.getDate()+1); guard++; }
+  let mejorMes=null, mejorDias=-1;
+  Object.keys(dias).forEach(k=>{ if (dias[k]>mejorDias){ mejorDias=dias[k]; mejorMes=k; } });
+  return mejorMes;
+}
+function parsearPeriodoTarea(desc){
+  if (!desc) return null;
+  const d = desc.toUpperCase();
+  let m = d.match(/DEL\s+(\d{1,2})\/(\d{1,2})\/(\d{4})\s+AL\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m){
+    const mes = mesConMayoriaDeDias(+m[1],+m[2],+m[3], +m[4],+m[5],+m[6]);
+    return { mes, label:`${m[1]}/${m[2]}/${m[3]} – ${m[4]}/${m[5]}/${m[6]}`, finDate: isoDate(+m[6],+m[5],+m[4]) };
+  }
+  m = d.match(/\b([A-ZÑ]{3,12})-([A-ZÑ]{3,12})\s+(\d{4})\b/);
+  if (m){
+    const mes1 = MESES_ES[m[1]]||MESES_ABR[m[1]];
+    const mes2 = MESES_ES[m[2]]||MESES_ABR[m[2]];
+    if (mes1) return { mes:`${m[3]}-${String(mes1).padStart(2,'0')}`, label:`${m[1]}-${m[2]} ${m[3]}`, finDate: mes2?isoDate(+m[3],mes2,diasEnMes(+m[3],mes2)):null };
+  }
+  m = d.match(/\b([A-ZÑ]{3,12})\s+(\d{4})\b/);
+  if (m){
+    const mes = MESES_ES[m[1]]||MESES_ABR[m[1]];
+    if (mes) return { mes:`${m[2]}-${String(mes).padStart(2,'0')}`, label:`${m[1]} ${m[2]}`, finDate: isoDate(+m[2],mes,diasEnMes(+m[2],mes)) };
+  }
+  return null;
+}
+let taskPeriodMap = {};
+async function cargarJobTaskLines(){
+  const rows = await bcFetchAll(`${ODATA_BASE}/Job_Task_Lines?$top=3000`);
+  taskPeriodMap = {};
+  rows.forEach(t=>{ const p=parsearPeriodoTarea(t.Description); if(p) taskPeriodMap[`${t.Job_No}||${t.Job_Task_No}`]=p; });
+}
+function periodoCompletoDeUsage(u){
+  const k = `${u.Job_No}||${u.Job_Task_No}`;
+  const fromTask = taskPeriodMap[k];
+  if (fromTask) return fromTask;
+  const fromDesc = parsearPeriodoTarea(u.Description);
+  if (fromDesc) return fromDesc;
+  return { label: u.Description || '—', finDate: null };
+}
+let invByNumberEF = {}; // N° factura -> {status, customerName, invoiceDate, ...}
+async function cargarFacturasVentaEF(){
+  const cid = await getCompanyId();
+  const rows = await bcFetchAll(`${V2_BASE}/companies(${cid})/salesInvoices?$top=2000`);
+  invByNumberEF = {};
+  rows.forEach(r=>{ invByNumberEF[r.number] = r; });
+}
+
 let facturacionPorEmpleado = {};
+let facturacionLineasPorEmpleado = {}; // empCod -> [{periodoLabel, periodoFinDate, factura, fechaFactura, cliente, estado, horas, sinIVA, mes}]
 function buildFacturacionPorEmpleado(rawMovs){
   const usageRows = rawMovs.filter(isUsage);
+  const saleRows = rawMovs.filter(isSale);
+  const saleByKey = {};
+  saleRows.forEach(s => { saleByKey[`${s.Job_No}||${s.Job_Task_No}`] = s; });
   facturacionPorEmpleado = {};
+  facturacionLineasPorEmpleado = {};
   usageRows.forEach(u => {
     const empCod = u.Global_Dimension_2_Code;
     if (!empCod) return;
@@ -521,6 +584,18 @@ function buildFacturacionPorEmpleado(rawMovs){
     facturacionPorEmpleado[empCod][mk].horas += qty;
     facturacionPorEmpleado[empCod][mk].sinIVA += sinIVA;
     facturacionPorEmpleado[empCod][mk].conIVA += conIVA;
+
+    const sale = saleByKey[`${u.Job_No}||${u.Job_Task_No}`];
+    const factura = sale?.Document_No || null;
+    const inv = factura ? invByNumberEF[factura] : null;
+    const periodo = periodoCompletoDeUsage(u);
+    if (!facturacionLineasPorEmpleado[empCod]) facturacionLineasPorEmpleado[empCod] = [];
+    facturacionLineasPorEmpleado[empCod].push({
+      mes: mk, horas: qty, sinIVA,
+      periodoLabel: periodo.label, periodoFinDate: periodo.finDate,
+      factura, fechaFactura: inv?.invoiceDate || null,
+      cliente: inv?.customerName || null, estado: inv ? inv.status : (factura?'Desconocido':'Sin facturar'),
+    });
   });
 }
 function facturacionEmpleadoEnMeses(empCod, mesKeys){
@@ -683,7 +758,7 @@ function desgloseLineaPL(bucketKey, por, mesKeys){
     const empCods = Object.keys(facturacionPorEmpleado).filter(c=>!SOCIOS_RECURSO.includes(c));
     const items = empCods.map(c=>{
       const f = facturacionEmpleadoEnMeses(c, mesKeys);
-      return { label: empleadosMap[c]||c, monto: f.sinIVA, horas: f.horas };
+      return { label: empleadosMap[c]||c, monto: f.sinIVA, horas: f.horas, empCod: c };
     }).filter(i=>Math.abs(i.monto)>0.5);
     return finalizarDesglose(items);
   }
@@ -764,7 +839,7 @@ function renderModalPL(){
     tabla = `<div class="tbl-scroll"><table>
       <thead><tr><th style="text-align:left">${porLabel}</th><th style="text-align:left">Peso relativo</th>${tieneHoras?'<th>Horas</th><th>Valor/Hora</th>':''}<th>Monto</th><th>%</th></tr></thead>
       <tbody>` +
-      (items.length ? items.map(i => `<tr>
+      (items.length ? items.map(i => `<tr${i.empCod?` class="row-clickable" onclick="verFacturasEmpleadoEF('${i.empCod.replace(/'/g,"\\'")}')" title="Ver detalle factura por factura"`:''}>
         <td>${i.label}</td>
         <td style="min-width:160px"><div style="background:var(--s3);border-radius:4px;height:8px;overflow:hidden"><div style="width:${i.pesoRel}%;height:100%;background:${i.monto<0?'var(--red)':'var(--green)'}"></div></div></td>
         ${tieneHoras?`<td class="mono" style="text-align:right">${fmtHrs(i.horas)}</td><td class="amt" style="color:var(--t3)">${i.valorHora!=null?fmt(i.valorHora):'—'}</td>`:''}
@@ -1001,6 +1076,60 @@ function renderCashFlowDirecto(){
 }
 
 // ── Utilidad compartida por todos los modales ──
+function fmtRezagoEF(dias){
+  if (dias==null) return '<span style="color:var(--t3)">—</span>';
+  const color = dias>30 ? 'var(--red)' : (dias>0 ? 'var(--amber)' : 'var(--t3)');
+  return `<span style="color:${color}">${dias} d</span>`;
+}
+function badgeEstadoEF(estado){
+  if (estado==='Paid') return '<span class="badge" style="background:#dcfce7;color:#166534">Cobrada</span>';
+  if (estado==='Sin facturar') return '<span class="badge" style="background:var(--s3);color:var(--t3)">Sin facturar</span>';
+  return '<span class="badge" style="background:#fef3c7;color:#92400e">Pendiente de cobro</span>';
+}
+function fdEF(d){ if(!d) return '—'; return new Date(d).toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'}); }
+function verFacturasEmpleadoEF(empCod){
+  const lineas = facturacionLineasPorEmpleado[empCod] || [];
+  qs('md-titulo').textContent = empleadosMap[empCod] || empCod;
+  qs('md-sub').textContent = `${empCod} · Año ${currentYear} · detalle factura por factura`;
+
+  const totalHoras = lineas.reduce((s,l)=>s+l.horas,0);
+  const totalSinIVA = lineas.reduce((s,l)=>s+l.sinIVA,0);
+  const facturasUnicas = new Set(lineas.filter(l=>l.factura).map(l=>l.factura));
+  const facturasPendientes = new Set(lineas.filter(l=>l.factura && l.estado!=='Paid').map(l=>l.factura));
+
+  let html = `<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="kpi"><div class="k-label">Horas</div><div class="k-val">${fmtHrs(totalHoras)}</div></div>
+    <div class="kpi"><div class="k-label">Sin IVA</div><div class="k-val">${fmt(totalSinIVA)}</div></div>
+    <div class="kpi"><div class="k-label">Facturas</div><div class="k-val">${facturasUnicas.size}</div></div>
+    <div class="kpi"><div class="k-label">Pendientes de cobro</div><div class="k-val" style="color:${facturasPendientes.size?'var(--amber)':'var(--green)'}">${facturasPendientes.size}</div></div>
+  </div>
+  <div class="tbl-scroll"><table>
+    <thead><tr><th style="text-align:left">N° Factura</th><th style="text-align:left">Cliente</th><th style="text-align:left">Período facturado</th><th>Fecha Factura</th><th>Rezago</th><th>Horas</th><th>Sin IVA</th><th>Con IVA</th><th style="text-align:left">Estado</th></tr></thead>
+    <tbody>`;
+  if (!lineas.length){
+    html += '<tr><td colspan="9" class="empty">Sin registros de horas facturadas</td></tr>';
+  } else {
+    [...lineas].sort((a,b)=>b.sinIVA-a.sinIVA).forEach(l=>{
+      let rezago = null;
+      if (l.fechaFactura && l.periodoFinDate) rezago = Math.round((new Date(l.fechaFactura) - new Date(l.periodoFinDate)) / 86400000);
+      html += `<tr>
+        <td style="text-align:left">${l.factura || '—'}</td>
+        <td style="text-align:left;color:var(--t3);font-size:11px">${l.cliente || '—'}</td>
+        <td style="text-align:left;font-size:11px">${l.periodoLabel || '—'}</td>
+        <td>${fdEF(l.fechaFactura)}</td>
+        <td>${fmtRezagoEF(rezago)}</td>
+        <td>${fmtHrs(l.horas)}</td>
+        <td>${fmt(l.sinIVA)}</td>
+        <td>${fmt(l.sinIVA*1.16)}</td>
+        <td style="text-align:left">${badgeEstadoEF(l.estado)}</td>
+      </tr>`;
+    });
+  }
+  html += '</tbody></table></div>';
+  qs('md-body').innerHTML = html;
+  qs('modal-detalle').classList.add('active');
+}
+
 function cerrarModalDetalle(){ qs('modal-detalle').classList.remove('active'); }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarModalDetalle(); });
 
@@ -1065,6 +1194,10 @@ async function cargarTodo(year){
     await cargarDimensionSetsRecurso();
     setLoadingMsg('Cargando dimensiones de contrato…');
     await Promise.all([cargarDimensionSetsContrato(), cargarValoresContrato()]);
+    setLoadingMsg('Cargando períodos de tarea (Job_Task_Lines)…');
+    await cargarJobTaskLines();
+    setLoadingMsg('Cargando facturas de venta (cliente y estado de cobro)…');
+    await cargarFacturasVentaEF();
     setLoadingMsg(`Cargando movimientos contables ${year}…`);
     await cargarGLRaw(year);
     setLoadingMsg('Cargando facturación por proyecto…');
