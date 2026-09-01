@@ -360,6 +360,19 @@ async function cargarDimensionSetsRecurso(){
 const MESES_ES = {ENERO:1,FEBRERO:2,MARZO:3,ABRIL:4,MAYO:5,JUNIO:6,JULIO:7,AGOSTO:8,SEPTIEMBRE:9,OCTUBRE:10,NOVIEMBRE:11,DICIEMBRE:12};
 const MESES_ABR = {ENE:1,FEB:2,MAR:3,ABR:4,MAY:5,JUN:6,JUL:7,AGO:8,SEP:9,OCT:10,NOV:11,DIC:12};
 
+function diasEnMes(anio,mes){ return new Date(anio, mes, 0).getDate(); }
+function isoDate(y,m,d){ return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+// Dado un rango de fechas, devuelve el 'YYYY-MM' del mes con MÁS DÍAS dentro del rango
+// (si el período cruza dos meses, gana el que tiene mayoría de días — no siempre el de inicio).
+function mesConMayoriaDeDias(d1,m1,y1,d2,m2,y2){
+  const inicio = new Date(y1,m1-1,d1), fin = new Date(y2,m2-1,d2);
+  if (isNaN(inicio)||isNaN(fin)||fin<inicio) return `${y1}-${String(m1).padStart(2,'0')}`;
+  const dias = {}; let cur = new Date(inicio), guard = 0;
+  while (cur<=fin && guard<400){ const k = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}`; dias[k]=(dias[k]||0)+1; cur.setDate(cur.getDate()+1); guard++; }
+  let mejorMes=null, mejorDias=-1;
+  Object.keys(dias).forEach(k=>{ if (dias[k]>mejorDias){ mejorDias=dias[k]; mejorMes=k; } });
+  return mejorMes;
+}
 function parsearPeriodoTarea(desc){
   if (!desc) return null;
   const d = desc.toUpperCase();
@@ -367,22 +380,23 @@ function parsearPeriodoTarea(desc){
   // "DEL DD/MM/YYYY AL DD/MM/YYYY" (con o sin código de referencia adelante)
   let m = d.match(/DEL\s+(\d{1,2})\/(\d{1,2})\/(\d{4})\s+AL\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (m){
-    const mes = `${m[3]}-${m[2].padStart(2,'0')}`;
-    return { mes, label: `${m[1]}/${m[2]}/${m[3]} – ${m[4]}/${m[5]}/${m[6]}`, fuente: 'tarea' };
+    const mes = mesConMayoriaDeDias(+m[1],+m[2],+m[3], +m[4],+m[5],+m[6]);
+    return { mes, label: `${m[1]}/${m[2]}/${m[3]} – ${m[4]}/${m[5]}/${m[6]}`, fuente: 'tarea', finDate: isoDate(+m[6],+m[5],+m[4]) };
   }
 
   // "MES1-MES2 AÑO" (ej. "ENE-FEB 2026")
   m = d.match(/\b([A-ZÑ]{3,12})-([A-ZÑ]{3,12})\s+(\d{4})\b/);
   if (m){
     const mes1 = MESES_ES[m[1]] || MESES_ABR[m[1]];
-    if (mes1) return { mes: `${m[3]}-${String(mes1).padStart(2,'0')}`, label: `${m[1]}-${m[2]} ${m[3]}`, fuente: 'tarea' };
+    const mes2 = MESES_ES[m[2]] || MESES_ABR[m[2]];
+    if (mes1) return { mes: `${m[3]}-${String(mes1).padStart(2,'0')}`, label: `${m[1]}-${m[2]} ${m[3]}`, fuente: 'tarea', finDate: mes2?isoDate(+m[3],mes2,diasEnMes(+m[3],mes2)):null };
   }
 
   // "MES AÑO" (ej. "MARZO 2026", "JULIO 2025")
   m = d.match(/\b([A-ZÑ]{3,12})\s+(\d{4})\b/);
   if (m){
     const mes = MESES_ES[m[1]] || MESES_ABR[m[1]];
-    if (mes) return { mes: `${m[2]}-${String(mes).padStart(2,'0')}`, label: `${m[1]} ${m[2]}`, fuente: 'tarea' };
+    if (mes) return { mes: `${m[2]}-${String(mes).padStart(2,'0')}`, label: `${m[1]} ${m[2]}`, fuente: 'tarea', finDate: isoDate(+m[2],mes,diasEnMes(+m[2],mes)) };
   }
 
   return null; // proyecto de alcance fijo, sin período mensual identificable en el texto
@@ -441,6 +455,7 @@ function procesarDatos(){
       mes: periodoTarea ? periodoTarea.mes : fecha.slice(0,7),
       mesFuente: periodoTarea ? 'tarea' : 'carga',
       mesLabel: periodoTarea ? periodoTarea.label : null,
+      periodoFinDate: periodoTarea ? periodoTarea.finDate : null,
     };
   });
 
@@ -670,7 +685,6 @@ function renderTablaAgregada(filas){
       ${showProyCol ? `<td style="color:var(--purple);font-size:11px">${e.job||'—'}</td>` : ''}
       <td class="hrs">${e.horas.toFixed(2)}</td>
       <td class="amt">${fmt(e.sinIVA)}</td>
-      <td class="amt" style="color:var(--t3)">${e.horas>0?fmt(e.sinIVA/e.horas):'—'}</td>
       <td class="amt" style="color:var(--t3)">${fmt(e.conIVA-e.sinIVA)}</td>
       <td class="amt green">${fmt(e.conIVA)}</td>
       <td class="amt" style="color:var(--red)">${fmt(e.costoNomina)}</td>
@@ -686,13 +700,13 @@ function renderTablaAgregada(filas){
   wrap.innerHTML = `<table>
     <thead><tr>
       ${showEmpCol ? '<th>Empleado</th><th>Código</th>' : ''}
-      <th>Mes</th>${showProyCol ? '<th>Proyecto</th>' : ''}<th style="text-align:right">Horas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">Valor/Hora</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th>
+      <th>Mes</th>${showProyCol ? '<th>Proyecto</th>' : ''}<th style="text-align:right">Horas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th>
       <th style="text-align:right">Nómina</th><th style="text-align:right">Otro Costo</th><th style="text-align:right">Margen</th><th style="text-align:right">Margen %</th>
     </tr></thead>
     <tbody>${rowsHtml}</tbody>
     <tfoot><tr>
       <td colspan="${colspanTotal}">TOTAL</td>${showProyCol ? '<td></td>' : ''}
-      <td class="amt">${totHoras.toFixed(2)}</td><td class="amt">${fmt(totSin)}</td><td class="amt" style="color:var(--t3)">${totHoras>0?fmt(totSin/totHoras):'—'}</td><td class="amt">${fmt(totCon-totSin)}</td><td class="amt">${fmt(totCon)}</td>
+      <td class="amt">${totHoras.toFixed(2)}</td><td class="amt">${fmt(totSin)}</td><td class="amt">${fmt(totCon-totSin)}</td><td class="amt">${fmt(totCon)}</td>
       <td class="amt" style="color:var(--red)">${fmt(totNom)}</td><td class="amt" style="color:var(--amber)">${fmt(totOtro)}</td>
       <td class="amt" style="color:${totMargen>=0?'var(--green)':'var(--red)'}">${fmt(totMargen)}</td>
       <td class="amt" style="color:${totMargen>=0?'var(--green)':'var(--red)'}">${totMargenPct!=null?totMargenPct.toFixed(1)+'%':'—'}</td>
@@ -761,16 +775,17 @@ function renderDetalle(){
     <th>Período</th><th>Fecha Factura</th><th>Rezago</th>
     ${proy==='all' ? '<th>Proyecto</th>' : ''}
     <th>Tarea</th><th style="text-align:right">Horas</th><th>N° Factura</th><th>Cliente</th>
-    <th style="text-align:right">Sin IVA</th><th style="text-align:right">Valor/Hora</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th>
+    <th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th>
   </tr>`;
   qs('fact-detalle-sub').textContent = `${factDetalle.length} registros de horas`;
   let tS=0,tC=0,tH=0;
-  const totalColsFact = 11 + (emp==='all'?1:0) + (proy==='all'?1:0);
+  const totalColsFact = 10 + (emp==='all'?1:0) + (proy==='all'?1:0);
   qs('tbl-fact-detalle').innerHTML = factDetalle.map(r=>{
     tH+=r.qty; tS+=r.montoSinIVA; tC+=r.montoConIVA;
     let rezago = '—';
-    if (r.fechaFactura && r.fecha){
-      const dias = Math.round((new Date(r.fechaFactura) - new Date(r.fecha)) / 86400000);
+    const baseRezago = r.periodoFinDate || r.fecha; // preferimos el fin del período real; si no hay, la fecha de carga
+    if (r.fechaFactura && baseRezago){
+      const dias = Math.round((new Date(r.fechaFactura) - new Date(baseRezago)) / 86400000);
       rezago = `<span style="color:${dias>30?'var(--red)':dias>0?'var(--amber)':'var(--t3)'}">${dias} d</span>`;
     }
     const periodoTxt = r.mesFuente==='tarea' ? (r.mesLabel || r.mes) : r.mes;
@@ -782,11 +797,11 @@ function renderDetalle(){
       <td class="hrs">${r.qty.toFixed(2)}</td>
       <td>${r.factura!=='—' ? `<span class="badge b-amber">${r.factura}</span>` : '<span style="color:var(--t3)">—</span>'}</td>
       <td style="font-size:11px;color:var(--t3)">${r.cliente}</td>
-      <td class="amt">${fmt(r.montoSinIVA)}</td><td class="amt" style="color:var(--t3)">${r.qty>0?fmt(r.montoSinIVA/r.qty):'—'}</td><td class="amt" style="color:var(--t3)">${fmt(r.montoConIVA-r.montoSinIVA)}</td><td class="amt green">${fmt(r.montoConIVA)}</td>
+      <td class="amt">${fmt(r.montoSinIVA)}</td><td class="amt" style="color:var(--t3)">${fmt(r.montoConIVA-r.montoSinIVA)}</td><td class="amt green">${fmt(r.montoConIVA)}</td>
     </tr>`;
   }).join('') || `<tr><td colspan="${totalColsFact}" class="empty">Sin registros de horas en el período</td></tr>`;
   const colspanFactTotal = 4 + (emp==='all'?1:0) + (proy==='all'?1:0); // hasta (incl.) la columna Tarea
-  qs('tbl-fact-detalle-foot').innerHTML = factDetalle.length ? `<tr><td colspan="${colspanFactTotal}">TOTAL</td><td class="amt">${tH.toFixed(2)}</td><td colspan="2"></td><td class="amt">${fmt(tS)}</td><td class="amt" style="color:var(--t3)">${tH>0?fmt(tS/tH):'—'}</td><td class="amt">${fmt(tC-tS)}</td><td class="amt">${fmt(tC)}</td></tr>` : '';
+  qs('tbl-fact-detalle-foot').innerHTML = factDetalle.length ? `<tr><td colspan="${colspanFactTotal}">TOTAL</td><td class="amt">${tH.toFixed(2)}</td><td colspan="2"></td><td class="amt">${fmt(tS)}</td><td class="amt">${fmt(tC-tS)}</td><td class="amt">${fmt(tC)}</td></tr>` : '';
 
   // ── Tabla costo detalle: dos formatos distintos según el modo ──
   if (!modoProyectoPuro){

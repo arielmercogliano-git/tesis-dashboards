@@ -732,6 +732,17 @@ async function getCompanyId(){
 const MESES_ES = {ENERO:1,FEBRERO:2,MARZO:3,ABRIL:4,MAYO:5,JUNIO:6,JULIO:7,AGOSTO:8,SEPTIEMBRE:9,OCTUBRE:10,NOVIEMBRE:11,DICIEMBRE:12};
 const MESES_ABR = {ENE:1,FEB:2,MAR:3,ABR:4,MAY:5,JUN:6,JUL:7,AGO:8,SEP:9,OCT:10,NOV:11,DIC:12};
 
+function diasEnMes(anio,mes){ return new Date(anio, mes, 0).getDate(); }
+function isoDateP(y,m,d){ return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+function mesConMayoriaDeDias(d1,m1,y1,d2,m2,y2){
+  const inicio = new Date(y1,m1-1,d1), fin = new Date(y2,m2-1,d2);
+  if (isNaN(inicio)||isNaN(fin)||fin<inicio) return `${y1}-${String(m1).padStart(2,'0')}`;
+  const dias = {}; let cur = new Date(inicio), guard = 0;
+  while (cur<=fin && guard<400){ const k = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}`; dias[k]=(dias[k]||0)+1; cur.setDate(cur.getDate()+1); guard++; }
+  let mejorMes=null, mejorDias=-1;
+  Object.keys(dias).forEach(k=>{ if (dias[k]>mejorDias){ mejorDias=dias[k]; mejorMes=k; } });
+  return mejorMes;
+}
 function parsearPeriodoTarea(desc){
   if (!desc) return null;
   const d = desc.toUpperCase();
@@ -739,22 +750,23 @@ function parsearPeriodoTarea(desc){
   // "DEL DD/MM/YYYY AL DD/MM/YYYY" (con o sin código de referencia adelante)
   let m = d.match(/DEL\s+(\d{1,2})\/(\d{1,2})\/(\d{4})\s+AL\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (m){
-    const mes = `${m[3]}-${m[2].padStart(2,'0')}`;
-    return { mes, label: `${m[1]}/${m[2]}/${m[3]} – ${m[4]}/${m[5]}/${m[6]}`, fuente: 'tarea' };
+    const mes = mesConMayoriaDeDias(+m[1],+m[2],+m[3], +m[4],+m[5],+m[6]);
+    return { mes, label: `${m[1]}/${m[2]}/${m[3]} – ${m[4]}/${m[5]}/${m[6]}`, fuente: 'tarea', finDate: isoDateP(+m[6],+m[5],+m[4]) };
   }
 
   // "MES1-MES2 AÑO" (ej. "ENE-FEB 2026")
   m = d.match(/\b([A-ZÑ]{3,12})-([A-ZÑ]{3,12})\s+(\d{4})\b/);
   if (m){
     const mes1 = MESES_ES[m[1]] || MESES_ABR[m[1]];
-    if (mes1) return { mes: `${m[3]}-${String(mes1).padStart(2,'0')}`, label: `${m[1]}-${m[2]} ${m[3]}`, fuente: 'tarea' };
+    const mes2 = MESES_ES[m[2]] || MESES_ABR[m[2]];
+    if (mes1) return { mes: `${m[3]}-${String(mes1).padStart(2,'0')}`, label: `${m[1]}-${m[2]} ${m[3]}`, fuente: 'tarea', finDate: mes2?isoDateP(+m[3],mes2,diasEnMes(+m[3],mes2)):null };
   }
 
   // "MES AÑO" (ej. "MARZO 2026", "JULIO 2025")
   m = d.match(/\b([A-ZÑ]{3,12})\s+(\d{4})\b/);
   if (m){
     const mes = MESES_ES[m[1]] || MESES_ABR[m[1]];
-    if (mes) return { mes: `${m[2]}-${String(mes).padStart(2,'0')}`, label: `${m[1]} ${m[2]}`, fuente: 'tarea' };
+    if (mes) return { mes: `${m[2]}-${String(mes).padStart(2,'0')}`, label: `${m[1]} ${m[2]}`, fuente: 'tarea', finDate: isoDateP(+m[2],mes,diasEnMes(+m[2],mes)) };
   }
 
   return null; // proyecto de alcance fijo, sin período mensual identificable en el texto
@@ -778,6 +790,13 @@ function labelPeriodoTarea(jobNo, taskNo, descUsage){
   const fromUsage = parsearPeriodoTarea(descUsage);
   if (fromUsage) return fromUsage.label;
   return descUsage || '—';
+}
+// Fecha de fin del período (para calcular el rezago hasta la fecha de factura). null si no hay período real.
+function finDatePeriodoTarea(jobNo, taskNo, descUsage){
+  const fromTask = taskPeriodMap[`${jobNo}||${taskNo}`];
+  if (fromTask) return fromTask.finDate;
+  const fromUsage = parsearPeriodoTarea(descUsage);
+  return fromUsage ? fromUsage.finDate : null;
 }
 
 async function cargarEmpleados(){
@@ -911,6 +930,8 @@ function procesarDatos(){
       _task: u.Job_Task_No || '—',
       _desc: u.Description || '—',
       _periodo: labelPeriodoTarea(u.Job_No, u.Job_Task_No, u.Description),
+      _periodoFinDate: finDatePeriodoTarea(u.Job_No, u.Job_Task_No, u.Description),
+      _fechaFactura: invInfo?.invoiceDate || null,
       _qty: parseFloat(u.Quantity||0),
       _unitPrice: parseFloat(u.Unit_Price||0),
       _total: parseFloat(u.Total_Price||0),
@@ -1392,23 +1413,20 @@ function verFacturasEmpleado(codigo){
   qs('me-titulo').textContent = nombre;
   qs('me-sub').textContent = codigo;
 
-  const invByNumber = {};
-  DATA.facturas.forEach(f => { invByNumber[f.numero] = f; });
-
-  const porFactura = {};
+  const porFacturaPeriodo = {};
   lineas.forEach(r => {
-    const key = r._factura;
-    if (!porFactura[key]) porFactura[key] = { factura: key, cliente: r._cliente, horas: 0, sinIVA: 0, conIVA: 0 };
-    porFactura[key].horas += r._qty;
-    porFactura[key].sinIVA += r._montoSinIVA;
-    porFactura[key].conIVA += r._montoConIVA;
+    const key = `${r._factura}||${r._periodo}`;
+    if (!porFacturaPeriodo[key]) porFacturaPeriodo[key] = { factura: r._factura, cliente: r._cliente, periodo: r._periodo, periodoFinDate: r._periodoFinDate, fechaFactura: r._fechaFactura, horas: 0, sinIVA: 0, conIVA: 0 };
+    porFacturaPeriodo[key].horas += r._qty;
+    porFacturaPeriodo[key].sinIVA += r._montoSinIVA;
+    porFacturaPeriodo[key].conIVA += r._montoConIVA;
   });
-  const facRows = Object.values(porFactura).sort((a,b)=>b.conIVA-a.conIVA);
+  const facRows = Object.values(porFacturaPeriodo).sort((a,b)=>b.conIVA-a.conIVA);
 
   const totalHoras = lineas.reduce((s,r)=>s+r._qty, 0);
   const totalSinIVA = lineas.reduce((s,r)=>s+r._montoSinIVA, 0);
   const totalConIVA = lineas.reduce((s,r)=>s+r._montoConIVA, 0);
-  const numFacturas = facRows.filter(f=>f.factura!=='—').length;
+  const numFacturas = new Set(facRows.filter(f=>f.factura!=='—').map(f=>f.factura)).size;
 
   qs('me-horas').textContent = fmtHrs(totalHoras) + ' h';
   qs('me-facturas').textContent = numFacturas;
@@ -1416,16 +1434,22 @@ function verFacturasEmpleado(codigo){
   qs('me-conIVA').textContent = fmt(totalConIVA);
 
   qs('me-tbl-facturas').innerHTML = facRows.map(f=>{
-    const inv = invByNumber[f.factura];
+    let rezago = '—';
+    if (f.fechaFactura && f.periodoFinDate){
+      const dias = Math.round((new Date(f.fechaFactura) - new Date(f.periodoFinDate)) / 86400000);
+      rezago = `<span style="color:${dias>30?'var(--red)':dias>0?'var(--amber)':'var(--t3)'}">${dias} d</span>`;
+    }
     return `<tr>
       <td>${f.factura!=='—' ? `<span class="badge b-amber">${f.factura}</span>` : '<span class="badge b-gray">Sin facturar</span>'}</td>
       <td style="color:var(--t3);font-size:12px">${f.cliente||'—'}</td>
-      <td class="mono">${inv ? fd(inv.fecha) : '—'}</td>
+      <td style="font-size:11px">${f.periodo||'—'}</td>
+      <td class="mono">${fd(f.fechaFactura)}</td>
+      <td class="mono">${rezago}</td>
       <td style="text-align:right" class="mono">${fmtHrs(f.horas)}</td>
       <td class="amt">${fmt(f.sinIVA)}</td>
       <td class="amt" style="color:var(--t3)">${fmt(f.conIVA-f.sinIVA)}</td>
       <td class="amt green">${fmt(f.conIVA)}</td></tr>`;
-  }).join('') || '<tr><td colspan="7" class="empty">Sin facturas para este empleado en el período</td></tr>';
+  }).join('') || '<tr><td colspan="9" class="empty">Sin facturas para este empleado en el período</td></tr>';
 
   qs('modal-empleado').classList.add('active');
 }
@@ -1565,11 +1589,11 @@ function renderEmpDetalle(){
       return { ...e, facturas:e.facturas.size, iva:e.conIVA-e.sinIVA,
         costoNomina:costo.nomina, costoOtro:costo.otroCostoDirecto, costoTotal, margen:e.sinIVA-costoTotal };
     }).sort((a,b)=> a.empleado.localeCompare(b.empleado) || a.mes.localeCompare(b.mes));
-    theadHtml = `<tr><th>Empleado</th><th>Código</th><th>Mes</th><th style="text-align:right">Horas</th><th>Facturas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">Valor/Hora</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th><th style="text-align:right">Nómina</th><th style="text-align:right">Otro Costo</th><th style="text-align:right">Margen</th></tr>`;
+    theadHtml = `<tr><th>Empleado</th><th>Código</th><th>Mes</th><th style="text-align:right">Horas</th><th>Facturas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th><th style="text-align:right">Nómina</th><th style="text-align:right">Otro Costo</th><th style="text-align:right">Margen</th></tr>`;
     rowHtml = e => `<tr>
       <td style="color:var(--a3);font-weight:600">${e.empleado}</td><td class="mono">${e.codigo}</td>
       <td class="mono">${e.mes}</td><td class="hrs">${e.horas.toFixed(2)}</td><td style="color:var(--t3)">${e.facturas}</td>
-      <td class="amt">${fmt(e.sinIVA)}</td><td class="amt" style="color:var(--t3)">${e.horas>0?fmt(e.sinIVA/e.horas):'—'}</td><td class="amt" style="color:var(--t3)">${fmt(e.iva)}</td><td class="amt green">${fmt(e.conIVA)}</td>
+      <td class="amt">${fmt(e.sinIVA)}</td><td class="amt" style="color:var(--t3)">${fmt(e.iva)}</td><td class="amt green">${fmt(e.conIVA)}</td>
       <td class="amt" style="color:var(--red)">${fmt(e.costoNomina)}</td><td class="amt" style="color:var(--amber)">${fmt(e.costoOtro)}</td>
       <td class="amt" style="color:${e.margen>=0?'var(--green)':'var(--red)'}">${fmt(e.margen)}</td>
     </tr>`;
@@ -1582,12 +1606,12 @@ function renderEmpDetalle(){
     });
     grouped = Object.values(agg).map(e=>({...e, iva:e.conIVA-e.sinIVA}))
       .sort((a,b)=> a.empleado.localeCompare(b.empleado) || (b.horas-a.horas));
-    theadHtml = `<tr><th>Empleado</th><th>Código</th><th>N° Factura</th><th>Cliente</th><th style="text-align:right">Horas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">Valor/Hora</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th></tr>`;
+    theadHtml = `<tr><th>Empleado</th><th>Código</th><th>N° Factura</th><th>Cliente</th><th style="text-align:right">Horas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th></tr>`;
     rowHtml = e => `<tr>
       <td style="color:var(--a3);font-weight:600">${e.empleado}</td><td class="mono">${e.codigo}</td>
       <td>${e.factura!=='—' ? `<span class="badge b-amber">${e.factura}</span>` : '<span class="badge b-gray">—</span>'}</td>
       <td style="color:var(--t3);font-size:12px">${e.cliente}</td><td class="hrs">${e.horas.toFixed(2)}</td>
-      <td class="amt">${fmt(e.sinIVA)}</td><td class="amt" style="color:var(--t3)">${e.horas>0?fmt(e.sinIVA/e.horas):'—'}</td><td class="amt" style="color:var(--t3)">${fmt(e.iva)}</td><td class="amt green">${fmt(e.conIVA)}</td>
+      <td class="amt">${fmt(e.sinIVA)}</td><td class="amt" style="color:var(--t3)">${fmt(e.iva)}</td><td class="amt green">${fmt(e.conIVA)}</td>
     </tr>`;
   } else { // 'total' — un renglón por empleado en todo el período seleccionado
     const agg = {};
@@ -1611,11 +1635,11 @@ function renderEmpDetalle(){
       return { ...e, facturas:e.facturas.size, iva:e.conIVA-e.sinIVA,
         costoNomina:costo.nomina, costoOtro:costo.otroCostoDirecto, costoTotal, margen:e.sinIVA-costoTotal };
     }).sort((a,b)=>b.horas-a.horas || b.costoTotal-a.costoTotal);
-    theadHtml = `<tr><th>Empleado</th><th>Código</th><th style="text-align:right">Horas</th><th>Facturas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">Valor/Hora</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th><th style="text-align:right">Nómina</th><th style="text-align:right">Otro Costo</th><th style="text-align:right">Margen</th></tr>`;
+    theadHtml = `<tr><th>Empleado</th><th>Código</th><th style="text-align:right">Horas</th><th>Facturas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th><th style="text-align:right">Nómina</th><th style="text-align:right">Otro Costo</th><th style="text-align:right">Margen</th></tr>`;
     rowHtml = e => `<tr class="row-clickable" onclick="verFacturasEmpleado('${(e.codigo||'').replace(/'/g,"\\'")}')" title="Ver detalle factura por factura">
       <td style="color:var(--a3);font-weight:600">${e.empleado}</td><td class="mono">${e.codigo}</td>
       <td class="hrs">${e.horas.toFixed(2)}</td><td style="color:var(--t3)">${e.facturas}</td>
-      <td class="amt">${fmt(e.sinIVA)}</td><td class="amt" style="color:var(--t3)">${e.horas>0?fmt(e.sinIVA/e.horas):'—'}</td><td class="amt" style="color:var(--t3)">${fmt(e.iva)}</td><td class="amt green">${fmt(e.conIVA)}</td>
+      <td class="amt">${fmt(e.sinIVA)}</td><td class="amt" style="color:var(--t3)">${fmt(e.iva)}</td><td class="amt green">${fmt(e.conIVA)}</td>
       <td class="amt" style="color:var(--red)">${fmt(e.costoNomina)}</td><td class="amt" style="color:var(--amber)">${fmt(e.costoOtro)}</td>
       <td class="amt" style="color:${e.margen>=0?'var(--green)':'var(--red)'}">${fmt(e.margen)}</td>
     </tr>`;
@@ -2014,7 +2038,7 @@ cargarTodo('2026');
       <div class="modal-section-title">Detalle factura por factura</div>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>N° Factura</th><th>Cliente</th><th>Fecha</th><th style="text-align:right">Horas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th></tr></thead>
+          <thead><tr><th>N° Factura</th><th>Cliente</th><th>Período facturado</th><th>Fecha Factura</th><th>Rezago</th><th style="text-align:right">Horas</th><th style="text-align:right">Sin IVA</th><th style="text-align:right">IVA</th><th style="text-align:right">Con IVA</th></tr></thead>
           <tbody id="me-tbl-facturas"></tbody>
         </table>
       </div>

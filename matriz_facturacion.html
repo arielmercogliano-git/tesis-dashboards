@@ -234,23 +234,25 @@ function mesConMayoriaDeDias(d1,m1,y1,d2,m2,y2){
   Object.keys(dias).forEach(k=>{ if (dias[k]>mejorDias){ mejorDias=dias[k]; mejorMes=k; } });
   return mejorMes;
 }
+function isoDate(y,m,d){ return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
 function parsearPeriodoTarea(desc){
   if (!desc) return null;
   const d = desc.toUpperCase();
   let m = d.match(/DEL\s+(\d{1,2})\/(\d{1,2})\/(\d{4})\s+AL\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (m){
     const mes = mesConMayoriaDeDias(+m[1],+m[2],+m[3], +m[4],+m[5],+m[6]);
-    return { mes, label:`${m[1]}/${m[2]}/${m[3]} – ${m[4]}/${m[5]}/${m[6]}`, fuente:'tarea' };
+    return { mes, label:`${m[1]}/${m[2]}/${m[3]} – ${m[4]}/${m[5]}/${m[6]}`, fuente:'tarea', finDate: isoDate(+m[6],+m[5],+m[4]) };
   }
   m = d.match(/\b([A-ZÑ]{3,12})-([A-ZÑ]{3,12})\s+(\d{4})\b/);
   if (m){
     const mes1 = MESES_ES[m[1]]||MESES_ABR[m[1]];
-    if (mes1) return { mes:`${m[3]}-${String(mes1).padStart(2,'0')}`, label:`${m[1]}-${m[2]} ${m[3]}`, fuente:'tarea' };
+    const mes2 = MESES_ES[m[2]]||MESES_ABR[m[2]];
+    if (mes1) return { mes:`${m[3]}-${String(mes1).padStart(2,'0')}`, label:`${m[1]}-${m[2]} ${m[3]}`, fuente:'tarea', finDate: mes2?isoDate(+m[3],mes2,diasEnMes(+m[3],mes2)):null };
   }
   m = d.match(/\b([A-ZÑ]{3,12})\s+(\d{4})\b/);
   if (m){
     const mes = MESES_ES[m[1]]||MESES_ABR[m[1]];
-    if (mes) return { mes:`${m[2]}-${String(mes).padStart(2,'0')}`, label:`${m[1]} ${m[2]}`, fuente:'tarea' };
+    if (mes) return { mes:`${m[2]}-${String(mes).padStart(2,'0')}`, label:`${m[1]} ${m[2]}`, fuente:'tarea', finDate: isoDate(+m[2],mes,diasEnMes(+m[2],mes)) };
   }
   return null;
 }
@@ -269,6 +271,16 @@ function mesFacturacionDeUsage(u){
   const fromDesc = parsearPeriodoTarea(u.Description);
   if (fromDesc) return fromDesc.mes;
   return (u.Posting_Date||'').slice(0,7);
+}
+// Devuelve el período completo {label, finDate, fuente} para mostrar en el modal de detalle.
+// Si no hay período real identificable (proyecto de alcance fijo), label cae a la Description tal cual y finDate queda null.
+function periodoCompletoDeUsage(u){
+  const k = `${u.Job_No}||${u.Job_Task_No}`;
+  const fromTask = taskPeriodMap[k];
+  if (fromTask) return fromTask;
+  const fromDesc = parsearPeriodoTarea(u.Description);
+  if (fromDesc) return fromDesc;
+  return { label: u.Description || '—', finDate: null, fuente: 'sin período' };
 }
 
 // ── Datos ──
@@ -335,13 +347,19 @@ function buildGrid(allMovs){
     const cobrado = estado === 'Paid';
     const montoSinIVA = Math.abs(parseFloat(u.Total_Price||0));
     const cliente = normalizarCliente(inv?.customerName) || null;
+    const periodo = periodoCompletoDeUsage(u);
+    const fechaFactura = inv?.invoiceDate || null;
+    let rezagoDias = null;
+    if (periodo.finDate && fechaFactura) {
+      rezagoDias = Math.round((new Date(fechaFactura) - new Date(periodo.finDate)) / 86400000);
+    }
 
     if (!GRID[empCod]) GRID[empCod] = {};
     if (!GRID[empCod][mes]) GRID[empCod][mes] = { horas:0, todoCobrado:true, lineas:[] };
     const celda = GRID[empCod][mes];
     celda.horas += horas;
     if (!cobrado) celda.todoCobrado = false;
-    celda.lineas.push({ job:u.Job_No, task:u.Job_Task_No, horas, montoSinIVA, factura, estado, cliente, fecha:u.Posting_Date });
+    celda.lineas.push({ job:u.Job_No, task:u.Job_Task_No, horas, montoSinIVA, factura, estado, cliente, fecha:u.Posting_Date, periodoLabel:periodo.label, periodoFinDate:periodo.finDate, fechaFactura, rezagoDias });
     if (cliente){ if(!EMP_CLIENTES[empCod]) EMP_CLIENTES[empCod]=new Set(); EMP_CLIENTES[empCod].add(cliente); }
 
     mesesSet.add(mes);
@@ -462,6 +480,11 @@ async function cargarTodo(){
 }
 
 function fd(d){ if(!d) return '—'; return new Date(d).toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'}); }
+function fmtRezago(dias){
+  if (dias==null) return '<span style="color:var(--t3)">—</span>';
+  const color = dias>30 ? 'var(--red)' : (dias>0 ? 'var(--amber)' : 'var(--t3)');
+  return `<span style="color:${color}">${dias} d</span>`;
+}
 function fmtMoney(v){ return '$'+new Intl.NumberFormat('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}).format(v); }
 function badgeEstado(estado){
   if (estado==='Paid') return '<span class="badge badge-cobrada">Cobrada</span>';
@@ -498,10 +521,10 @@ function verDetalleEmpleado(empCod){
     <div class="kpi"><div class="k-label">Pendientes de cobro</div><div class="k-val" style="color:${facturasPendientes.size?'var(--amber)':'var(--green)'}">${facturasPendientes.size}</div></div>
   </div>
   <table class="dtable">
-    <thead><tr><th>Mes</th><th>N° Factura</th><th>Cliente</th><th>Fecha</th><th>Horas</th><th>Sin IVA</th><th>Con IVA</th><th>Valor/Hora</th><th>Estado</th></tr></thead>
+    <thead><tr><th>Mes</th><th>N° Factura</th><th>Cliente</th><th>Período facturado</th><th>Fecha Factura</th><th>Rezago</th><th>Horas</th><th>Sin IVA</th><th>Con IVA</th><th>Valor/Hora</th><th>Estado</th></tr></thead>
     <tbody>`;
   if (!todasLasLineas.length){
-    html += '<tr><td colspan="9" class="empty">Sin registros de horas facturadas</td></tr>';
+    html += '<tr><td colspan="11" class="empty">Sin registros de horas facturadas</td></tr>';
   } else {
     todasLasLineas.forEach(l=>{
       const vh = l.horas>0 ? l.montoSinIVA/l.horas : null;
@@ -509,7 +532,9 @@ function verDetalleEmpleado(empCod){
         <td style="text-align:left">${mesLabelCorto(l.mes)}</td>
         <td style="text-align:left">${l.factura || '—'}</td>
         <td style="text-align:left;color:var(--t3);font-size:11px">${l.cliente || '—'}</td>
-        <td>${fd(l.fecha)}</td>
+        <td style="text-align:left;font-size:11px">${l.periodoLabel||'—'}</td>
+        <td>${fd(l.fechaFactura)}</td>
+        <td>${fmtRezago(l.rezagoDias)}</td>
         <td>${fmtHrs(l.horas)}</td>
         <td>${fmtMoney(l.montoSinIVA)}</td>
         <td>${fmtMoney(l.montoSinIVA*1.16)}</td>
@@ -542,14 +567,16 @@ function verDetalleCelda(empCod, mes){
     <div class="kpi"><div class="k-label">Estado</div><div class="k-val" style="font-size:13px">${celda.todoCobrado?badgeEstado('Paid'):badgeEstado('Pendiente')}</div></div>
   </div>
   <table class="dtable">
-    <thead><tr><th>N° Factura</th><th>Cliente</th><th>Fecha</th><th>Horas</th><th>Sin IVA</th><th>Con IVA</th><th>Valor/Hora</th><th>Estado</th></tr></thead>
+    <thead><tr><th>N° Factura</th><th>Cliente</th><th>Período facturado</th><th>Fecha Factura</th><th>Rezago</th><th>Horas</th><th>Sin IVA</th><th>Con IVA</th><th>Valor/Hora</th><th>Estado</th></tr></thead>
     <tbody>`;
   celda.lineas.sort((a,b)=>b.montoSinIVA-a.montoSinIVA).forEach(l=>{
     const vh = l.horas>0 ? l.montoSinIVA/l.horas : null;
     html += `<tr>
       <td style="text-align:left">${l.factura || '—'}</td>
       <td style="text-align:left;color:var(--t3);font-size:11px">${l.cliente || '—'}</td>
-      <td>${fd(l.fecha)}</td>
+      <td style="text-align:left;font-size:11px">${l.periodoLabel||'—'}</td>
+      <td>${fd(l.fechaFactura)}</td>
+      <td>${fmtRezago(l.rezagoDias)}</td>
       <td>${fmtHrs(l.horas)}</td>
       <td>${fmtMoney(l.montoSinIVA)}</td>
       <td>${fmtMoney(l.montoSinIVA*1.16)}</td>
