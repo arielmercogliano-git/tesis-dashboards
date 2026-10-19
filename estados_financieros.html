@@ -414,8 +414,17 @@ function bucketPL(accNo){
   if (esCtaMaquila(accNo)) return null;
   if (p === '511' || ['512','513','514','520'].includes(p)) return 'costo_directo';
   if (p === '531') return 'estructura';
+  // Resto de gastos operativos y financieros (532, 533 administración/comercialización,
+  // 55x egresos varios y no deducibles, 56x financieros, 57x extraordinarios, 6xx nómina fiscal e
+  // impuestos): sin esto quedaban fuera del P&L. Se agrupan en Estructura / overhead.
+  if (isEstructuraExtra(accNo)) return 'estructura';
   return null;
 }
+function isEstructuraExtra(accNo){
+  const p3 = prefijo3(accNo);
+  return p3 === '532' || p3 === '533' || /^(55|56|57|6)/.test(accNo || '');
+}
+function esCuentaResultados(accNo){ return /^[4-9]/.test(accNo || ''); }
 
 // ════════════════════════════════════════════════════════════
 //  AGREGACIÓN MENSUAL
@@ -454,7 +463,7 @@ function buildMonthly(){
     const esSocioEntry = !!(empCodEntry && SOCIOS_RECURSO.includes(empCodEntry));
     if (esCtaDividendos(accNo)) {
       m.pl.dividendos += -net;
-    } else if (esSocioEntry) {
+    } else if (esSocioEntry && esCuentaResultados(accNo)) {
       m.pl.extracciones_maquila += -net;
     } else if (esCtaMaquila(accNo)) {
       m.pl.maquila_terceros += -net;
@@ -727,7 +736,7 @@ function renderPLCascada(){
 function cuentasDeBucketPL(bucketKey){
   if (bucketKey === 'ingresos') return accountsRaw.filter(a => ['410','420','430','440'].includes(prefijo3(a.number)));
   if (bucketKey === 'costo_directo') return accountsRaw.filter(a => { const p=prefijo3(a.number); return (p==='511' && !esCtaMaquila(a.number)) || ['512','513','514','520'].includes(p); });
-  if (bucketKey === 'estructura') return accountsRaw.filter(a => prefijo3(a.number)==='531');
+  if (bucketKey === 'estructura') return accountsRaw.filter(a => prefijo3(a.number)==='531' || isEstructuraExtra(a.number));
   if (bucketKey === 'maquila_terceros' || bucketKey === 'extracciones_maquila') return accountsRaw.filter(a => esCtaMaquila(a.number));
   if (bucketKey === 'dividendos') return accountsRaw.filter(a => esCtaDividendos(a.number));
   return [];
@@ -773,7 +782,7 @@ function desgloseLineaPL(bucketKey, por, mesKeys){
 
     // Misma prioridad que buildMonthly(): dividendos > extracción de socio (cualquier cuenta) > cuenta normal.
     if (bucketKey === 'dividendos') { if (!esCtaDividendos(accNo)) return; }
-    else if (bucketKey === 'extracciones_maquila') { if (esCtaDividendos(accNo) || !esSocio) return; }
+    else if (bucketKey === 'extracciones_maquila') { if (esCtaDividendos(accNo) || !esSocio || !esCuentaResultados(accNo)) return; }
     else if (bucketKey === 'maquila_terceros') { if (esCtaDividendos(accNo) || esSocio || !esCtaMaquila(accNo)) return; }
     else { if (esCtaDividendos(accNo) || esSocio || !cuentaNums.has(accNo)) return; }
 
