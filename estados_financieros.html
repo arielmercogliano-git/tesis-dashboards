@@ -204,9 +204,8 @@ tr.section-header td { font-size:10px; text-transform:uppercase; letter-spacing:
           <select id="f-mes-bs"></select>
         </div>
       </div>
-      <div class="two-col" style="padding:20px">
+      <div style="padding:20px">
         <div class="tbl-scroll"><table id="tbl-bs"><thead id="tbl-bs-head"></thead><tbody id="tbl-bs-body"></tbody></table></div>
-        <div id="bs-chart-wrap"></div>
       </div>
     </div>
   </div>
@@ -923,7 +922,6 @@ const BS_ROWS_PASIVO = [
   { key:'impuestos_cargas_por_pagar', label:'Impuestos y cargas por pagar' },
   { key:'proveedores_operativo', label:'Proveedores y operativo' },
 ];
-const COLORS_BS = ['#2563eb','#22c55e','#f59e0b','#a78bfa','#6366f1','#ec4899','#10b981'];
 function activoTotal(bs){ return BS_ROWS_ACTIVO.reduce((s,r)=>s+bs[r.key],0); }
 // Pasivo se muestra con signo "natural" (acreedor = positivo): es el opuesto de Débito−Crédito.
 // Sin saldos de apertura, en el año se pagó más de lo que se devengó, por eso puede quedar negativo.
@@ -958,10 +956,8 @@ function renderBalance(){
     const dif = capital - netoPL;
     html += `<tr class="pct-row"><td>Control vs. Resultado neto del P&amp;L</td><td>${Math.abs(dif) < 1 ? '✓ coincide' : 'diferencia ' + fmt(dif)}</td></tr>`;
     qs('tbl-bs-body').innerHTML = html;
-    renderComposicionChart(bs, activo, pasivo, capital);
   } else {
     qs('balance-desc').textContent = 'Evolución del acumulado mes a mes (sin saldos de apertura). Tocá un renglón para ver sus cuentas.';
-    qs('bs-chart-wrap').innerHTML = '';
     const cols = ALL_MONTHS.map(mk => ({ key:mk, label:mk, bs: acumuladoHasta(mk).bs }));
     qs('tbl-bs-head').innerHTML = '<tr><th style="text-align:left">Concepto</th>' + cols.map(c=>`<th>${c.label}</th>`).join('') + '</tr>';
     let html = '<tr class="subtotal"><td>ACTIVO</td>' + cols.map(c=>`<td>${fmt(activoTotal(c.bs))}</td>`).join('') + '</tr>';
@@ -971,24 +967,6 @@ function renderBalance(){
     html += '<tr class="subtotal"><td>CAPITAL</td>' + cols.map(c=>`<td>${fmt(capitalDerivado(c.bs))}</td>`).join('') + '</tr>';
     qs('tbl-bs-body').innerHTML = html;
   }
-}
-function renderComposicionChart(bs, activo, pasivo, capital){
-  const segsActivo = BS_ROWS_ACTIVO.map((r,i) => ({ label:r.label, val:Math.max(bs[r.key],0), color:COLORS_BS[i] }));
-  const segsPasCap = [...BS_ROWS_PASIVO.map((r,i)=>({label:r.label, val:Math.abs(bs[r.key]), color:COLORS_BS[4+i]})), {label:'Capital (resultado)', val:Math.max(capital,0), color:COLORS_BS[6]}];
-  const maxTotal = Math.max(activo, Math.abs(pasivo)+Math.max(capital,0), 1);
-  function barHtml(segs){
-    return segs.map(s => { const pct = maxTotal ? (s.val/maxTotal*100) : 0; return `<div style="height:${pct}%;background:${s.color};width:100%" title="${s.label}: ${fmt(s.val)}"></div>`; }).join('');
-  }
-  qs('bs-chart-wrap').innerHTML = `
-    <div style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:12px">Composición de la posición · neta ${fc(activo)}</div>
-    <div style="display:flex;gap:24px;align-items:flex-end;height:220px;padding:0 20px">
-      <div style="flex:1;display:flex;flex-direction:column-reverse;height:100%;border-radius:6px;overflow:hidden">${barHtml(segsActivo)}</div>
-      <div style="flex:1;display:flex;flex-direction:column-reverse;height:100%;border-radius:6px;overflow:hidden">${barHtml(segsPasCap)}</div>
-    </div>
-    <div style="display:flex;justify-content:space-around;font-size:11px;color:var(--t3);margin-top:6px"><div>Activo</div><div>Pasivo + Capital</div></div>
-    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:16px;font-size:11px">
-      ${[...segsActivo,...segsPasCap].map(s=>`<div style="display:flex;align-items:center;gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:${s.color};display:inline-block"></span>${s.label}</div>`).join('')}
-    </div>`;
 }
 function verDetalleLineaBS(bucketKey){
   const label = [...BS_ROWS_ACTIVO,...BS_ROWS_PASIVO].find(r=>r.key===bucketKey)?.label || bucketKey;
@@ -1202,9 +1180,9 @@ function renderCuentas(){
     `<th onclick="ordenarCuentas('${key}')" style="cursor:pointer;${al==='left'?'text-align:left':''}">${lbl}${ctaSort.col===key?(ctaSort.dir>0?' ▲':' ▼'):''}</th>`).join('') + '</tr>';
   qs('tbl-cuentas-body').innerHTML = filas.length ? filas.map(r => `<tr class="row-clickable" onclick="verDetalleCuenta('${r.numero.replace(/'/g,"\\'")}')">
       <td style="font-family:var(--mono);font-size:12px;white-space:nowrap">${r.numero}</td>
-      <td style="font-family:var(--sans)">${r.nombre}${r.bloqueada?' <span style="color:var(--t3);font-size:10px">(bloqueada)</span>':''}</td>
-      <td style="font-family:var(--sans);color:var(--t3);font-size:11px">${r.tipo}</td>
-      <td style="font-family:var(--sans);font-size:11px;color:${r.linea===SIN_CLASIFICAR&&r.n>0?'var(--amber)':'var(--t2)'};white-space:normal">${r.linea}</td>
+      <td style="font-family:var(--sans);text-align:left">${r.nombre}${r.bloqueada?' <span style="color:var(--t3);font-size:10px">(bloqueada)</span>':''}</td>
+      <td style="font-family:var(--sans);color:var(--t3);font-size:11px;text-align:left">${r.tipo}</td>
+      <td style="font-family:var(--sans);font-size:11px;text-align:left;color:${r.linea===SIN_CLASIFICAR&&r.n>0?'var(--amber)':'var(--t2)'};white-space:normal">${r.linea}</td>
       <td>${r.n || '—'}</td>
       <td>${r.n ? fmt(r.debe) : '—'}</td>
       <td>${r.n ? fmt(r.haber) : '—'}</td>
