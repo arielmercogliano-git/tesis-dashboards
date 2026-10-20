@@ -184,10 +184,27 @@ async function bcFetch(url){
   if (!r.ok){ const e=await r.text(); throw new Error(`/bc ${r.status}: ${e.slice(0,300)}`); }
   return r.json();
 }
-async function bcFetchAll(url, cap=30000){
-  const rows=[]; let next=url, guard=0;
-  while (next && guard<25){ const d=await bcFetch(next); rows.push(...(d.value||[])); next=d['@odata.nextLink']||null; guard++; if(rows.length>=cap) break; }
+// Lee TODAS las páginas de BC (sigue @odata.nextLink). Sin $top en las URLs: BC devuelve todo lo
+// que entra en una página (hasta 20,000) y pagina solo el resto. El tope de abajo es solo una red
+// de seguridad contra consultas descontroladas; si se llegara a alcanzar, se avisa en pantalla.
+const AVISOS_CARGA = [];
+async function bcFetchAll(url, cap = 500000){
+  const rows = [];
+  let next = url;
+  while (next && rows.length < cap) {
+    const d = await bcFetch(next);
+    rows.push(...(d.value || []));
+    next = d['@odata.nextLink'] || null;
+  }
+  if (next) AVISOS_CARGA.push(`lectura cortada en ${rows.length} registros (${url.split('?')[0].split('/').pop()})`);
   return rows;
+}
+function mostrarAvisosCarga(){
+  if (!AVISOS_CARGA.length) return;
+  const el = qs('app-error');
+  if (!el) return;
+  el.style.display = 'block';
+  el.textContent = '⚠️ Datos incompletos: ' + [...new Set(AVISOS_CARGA)].join(' | ');
 }
 async function pingProxy(){ const r=await fetch(`${PROXY}/ping`); if(!r.ok) throw new Error('Proxy no disponible'); return r.json(); }
 async function getCompanyId(){
@@ -217,16 +234,16 @@ let chartInstance = null;
 
 async function cargarEmpleados(){
   const cid = await getCompanyId();
-  const dims = await bcFetch(`${V2_BASE}/companies(${cid})/dimensions?$top=50`);
+  const dims = await bcFetch(`${V2_BASE}/companies(${cid})/dimensions`);
   const recurso = (dims.value||[]).find(d=>(d.code||'').toUpperCase()==='RECURSO');
   if (!recurso) return;
-  const vals = await bcFetchAll(`${V2_BASE}/companies(${cid})/dimensions(${recurso.id})/dimensionValues?$top=2000`);
+  const vals = await bcFetchAll(`${V2_BASE}/companies(${cid})/dimensions(${recurso.id})/dimensionValues`);
   empleadosMap = {};
   vals.forEach(v=>{ if(v.code) empleadosMap[v.code]=v.displayName||v.name||v.code; });
 }
 async function cargarCuentas(){
   const cid = await getCompanyId();
-  const rows = await bcFetchAll(`${V2_BASE}/companies(${cid})/accounts?$top=1000`);
+  const rows = await bcFetchAll(`${V2_BASE}/companies(${cid})/accounts`);
   accountsByNumber = {};
   cuentasNomina = new Set();
   rows.forEach(a=>{
@@ -236,13 +253,13 @@ async function cargarCuentas(){
   });
 }
 async function cargarDimensionSetsRecurso(){
-  const rows = await bcFetchAll(`${ODATA_BASE}/DimensionSetEntries?$filter=Dimension_Code eq 'RECURSO'&$top=5000`, 20000);
+  const rows = await bcFetchAll(`${ODATA_BASE}/DimensionSetEntries?$filter=Dimension_Code eq 'RECURSO'`);
   dimSetToRecurso = {};
   rows.forEach(r=>{ if (r.Dimension_Value_Code) dimSetToRecurso[r.Dimension_Set_ID] = r.Dimension_Value_Code; });
 }
 async function cargarGLRaw(year){
-  const dateF = year!=='all' ? `&$filter=Posting_Date ge ${year}-01-01T00:00:00Z and Posting_Date le ${year}-12-31T23:59:59Z` : '';
-  return bcFetchAll(`${ODATA_BASE}/G_LEntries?$top=30000${dateF}`, 40000);
+  const dateF = year!=='all' ? `?$filter=Posting_Date ge ${year}-01-01T00:00:00Z and Posting_Date le ${year}-12-31T23:59:59Z` : '';
+  return bcFetchAll(`${ODATA_BASE}/G_LEntries${dateF}`);
 }
 
 function mesKeyOf(d){ return (d||'').slice(0,7); }
@@ -362,6 +379,7 @@ function toggleTheme(){
 
 async function cargarTodo(year){
   clearError();
+  AVISOS_CARGA.length = 0;
   setLive('busy','BC · Sincronizando…');
   try{
     setLoadingMsg('Verificando conexión con el proxy…');
@@ -381,6 +399,8 @@ async function cargarTodo(year){
     renderKPIs();
     renderChart();
     renderTabla();
+
+    mostrarAvisosCarga();
 
     setLive('ok','BC · En vivo');
     qs('loading-screen').style.display='none';

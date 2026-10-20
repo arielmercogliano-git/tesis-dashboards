@@ -127,6 +127,7 @@ tr.section-header td { font-size:10px; text-transform:uppercase; letter-spacing:
     <div class="nav-tab active" data-tab="resultados" onclick="switchTab('resultados')">Estado de resultados</div>
     <div class="nav-tab" data-tab="flujo" onclick="switchTab('flujo')">Flujo de caja</div>
     <div class="nav-tab" data-tab="balance" onclick="switchTab('balance')">Balance</div>
+    <div class="nav-tab" data-tab="cuentas" onclick="switchTab('cuentas')">Plan de cuentas</div>
   </div>
 </div>
 
@@ -208,6 +209,26 @@ tr.section-header td { font-size:10px; text-transform:uppercase; letter-spacing:
         <div id="bs-chart-wrap"></div>
       </div>
     </div>
+  </div>
+
+  <!-- ═══════════ PLAN DE CUENTAS ═══════════ -->
+  <div id="tab-cuentas" style="display:none">
+    <h1>Plan de cuentas</h1>
+    <p class="page-desc">Todas las cuentas de Business Central con su movimiento del año seleccionado y la línea del Estado de Resultados o del Balance donde se usan. Las cuentas con movimiento que figuran <b>sin clasificar</b> no están entrando en ningún reporte. Tocá una cuenta para ver su detalle mensual.</p>
+    <div class="kpi-grid" id="cta-kpis"></div>
+    <div class="card">
+      <div class="controls-row">
+        <div class="control-group">
+          <input type="text" id="cta-search" placeholder="Buscar por número o nombre…" oninput="renderCuentas()" style="min-width:240px">
+          <select id="cta-linea" onchange="renderCuentas()"></select>
+          <select id="cta-tipo" onchange="renderCuentas()"></select>
+          <label style="font-size:11px;color:var(--t2);display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="cta-solo-mov" onchange="renderCuentas()"> Solo con movimientos</label>
+        </div>
+        <div style="font-size:11px;color:var(--t3)" id="cta-contador">—</div>
+      </div>
+      <div class="tbl-scroll" style="max-height:68vh;overflow:auto"><table id="tbl-cuentas"><thead id="tbl-cuentas-head"></thead><tbody id="tbl-cuentas-body"></tbody></table></div>
+    </div>
+    <div class="info-box" style="margin-top:12px">Los movimientos de Ariel y Pablo (RECURSO D 001 / D 002) en cuentas de resultados se reclasifican a <b>Extracciones Maquila</b> en el Estado de Resultados, sin importar la cuenta donde estén registrados.</div>
   </div>
 </div>
 
@@ -297,17 +318,27 @@ async function bcFetch(url){
   if (!r.ok) { const e = await r.text(); throw new Error(`/bc ${r.status}: ${e.slice(0,300)}`); }
   return r.json();
 }
-async function bcFetchAll(url, cap = 30000){
+// Lee TODAS las páginas de BC (sigue @odata.nextLink). Sin $top en las URLs: BC devuelve todo lo
+// que entra en una página (hasta 20,000) y pagina solo el resto. El tope de abajo es solo una red
+// de seguridad contra consultas descontroladas; si se llegara a alcanzar, se avisa en pantalla.
+const AVISOS_CARGA = [];
+async function bcFetchAll(url, cap = 500000){
   const rows = [];
-  let next = url, guard = 0;
-  while (next && guard < 25) {
+  let next = url;
+  while (next && rows.length < cap) {
     const d = await bcFetch(next);
     rows.push(...(d.value || []));
     next = d['@odata.nextLink'] || null;
-    guard++;
-    if (rows.length >= cap) break;
   }
+  if (next) AVISOS_CARGA.push(`lectura cortada en ${rows.length} registros (${url.split('?')[0].split('/').pop()})`);
   return rows;
+}
+function mostrarAvisosCarga(){
+  if (!AVISOS_CARGA.length) return;
+  const el = qs('app-error');
+  if (!el) return;
+  el.style.display = 'block';
+  el.textContent = '⚠️ Datos incompletos: ' + [...new Set(AVISOS_CARGA)].join(' | ');
 }
 async function pingProxy(){ const r = await fetch(`${PROXY}/ping`); if (!r.ok) throw new Error('Proxy no disponible'); return r.json(); }
 async function getCompanyId(){
@@ -323,51 +354,51 @@ async function getCompanyId(){
 // ════════════════════════════════════════════════════════════
 async function cargarEmpleados(){
   const cid = await getCompanyId();
-  const dims = await bcFetch(`${V2_BASE}/companies(${cid})/dimensions?$top=50`);
+  const dims = await bcFetch(`${V2_BASE}/companies(${cid})/dimensions`);
   const recurso = (dims.value || []).find(d => (d.code||'').toUpperCase() === 'RECURSO');
   if (!recurso) return;
-  const vals = await bcFetchAll(`${V2_BASE}/companies(${cid})/dimensions(${recurso.id})/dimensionValues?$top=2000`);
+  const vals = await bcFetchAll(`${V2_BASE}/companies(${cid})/dimensions(${recurso.id})/dimensionValues`);
   empleadosMap = {};
   vals.forEach(v => { if (v.code) empleadosMap[v.code] = v.displayName || v.name || v.code; });
 }
 async function cargarCuentas(){
   const cid = await getCompanyId();
-  accountsRaw = await bcFetchAll(`${V2_BASE}/companies(${cid})/accounts?$top=1000`);
+  accountsRaw = await bcFetchAll(`${V2_BASE}/companies(${cid})/accounts`);
   accountsByNumber = {};
   accountsRaw.forEach(a => { accountsByNumber[a.number] = a; });
 }
 async function cargarDimensionSetsRecurso(){
-  const rows = await bcFetchAll(`${ODATA_BASE}/DimensionSetEntries?$filter=Dimension_Code eq 'RECURSO'&$top=5000`, 20000);
+  const rows = await bcFetchAll(`${ODATA_BASE}/DimensionSetEntries?$filter=Dimension_Code eq 'RECURSO'`);
   dimSetToRecurso = {};
   rows.forEach(r => { if (r.Dimension_Value_Code) dimSetToRecurso[r.Dimension_Set_ID] = r.Dimension_Value_Code; });
 }
 let dimSetToContrato = {};
 let contratoMap = {}; // código CONTRATO -> nombre legible
 async function cargarDimensionSetsContrato(){
-  const rows = await bcFetchAll(`${ODATA_BASE}/DimensionSetEntries?$filter=Dimension_Code eq 'CONTRATO'&$top=5000`, 20000);
+  const rows = await bcFetchAll(`${ODATA_BASE}/DimensionSetEntries?$filter=Dimension_Code eq 'CONTRATO'`);
   dimSetToContrato = {};
   rows.forEach(r => { if (r.Dimension_Value_Code) dimSetToContrato[r.Dimension_Set_ID] = r.Dimension_Value_Code; });
 }
 async function cargarValoresContrato(){
   const cid = await getCompanyId();
-  const dims = await bcFetch(`${V2_BASE}/companies(${cid})/dimensions?$top=50`);
+  const dims = await bcFetch(`${V2_BASE}/companies(${cid})/dimensions`);
   const contrato = (dims.value || []).find(d => (d.code||'').toUpperCase() === 'CONTRATO');
   contratoMap = {};
   if (!contrato) return;
-  const vals = await bcFetchAll(`${V2_BASE}/companies(${cid})/dimensions(${contrato.id})/dimensionValues?$top=2000`);
+  const vals = await bcFetchAll(`${V2_BASE}/companies(${cid})/dimensions(${contrato.id})/dimensionValues`);
   vals.forEach(v => { if (v.code) contratoMap[v.code] = v.displayName || v.name || v.code; });
 }
 async function cargarGLRaw(year){
   const dateF = year !== 'all'
-    ? `&$filter=Posting_Date ge ${year}-01-01T00:00:00Z and Posting_Date le ${year}-12-31T23:59:59Z`
+    ? `?$filter=Posting_Date ge ${year}-01-01T00:00:00Z and Posting_Date le ${year}-12-31T23:59:59Z`
     : '';
-  glRawEntries = await bcFetchAll(`${ODATA_BASE}/G_LEntries?$top=30000${dateF}`, 40000);
+  glRawEntries = await bcFetchAll(`${ODATA_BASE}/G_LEntries${dateF}`);
 }
 async function cargarMovs(year){
   const dateF = year !== 'all'
-    ? `&$filter=Posting_Date ge ${year}-01-01T00:00:00Z and Posting_Date le ${year}-12-31T23:59:59Z`
+    ? `?$filter=Posting_Date ge ${year}-01-01T00:00:00Z and Posting_Date le ${year}-12-31T23:59:59Z`
     : '';
-  return await bcFetchAll(`${ODATA_BASE}/MovsProyecto?$top=5000${dateF}`, 30000);
+  return await bcFetchAll(`${ODATA_BASE}/MovsProyecto${dateF}`);
 }
 // Cotización MXN/USD del día — API pública sin key. Si falla, fxRate queda null y el
 // botón de USD se deshabilita (no se inventa un valor).
@@ -550,7 +581,7 @@ function parsearPeriodoTarea(desc){
 }
 let taskPeriodMap = {};
 async function cargarJobTaskLines(){
-  const rows = await bcFetchAll(`${ODATA_BASE}/Job_Task_Lines?$top=3000`);
+  const rows = await bcFetchAll(`${ODATA_BASE}/Job_Task_Lines`);
   taskPeriodMap = {};
   rows.forEach(t=>{ const p=parsearPeriodoTarea(t.Description); if(p) taskPeriodMap[`${t.Job_No}||${t.Job_Task_No}`]=p; });
 }
@@ -565,7 +596,7 @@ function periodoCompletoDeUsage(u){
 let invByNumberEF = {}; // N° factura -> {status, customerName, invoiceDate, ...}
 async function cargarFacturasVentaEF(){
   const cid = await getCompanyId();
-  const rows = await bcFetchAll(`${V2_BASE}/companies(${cid})/salesInvoices?$top=2000`);
+  const rows = await bcFetchAll(`${V2_BASE}/companies(${cid})/salesInvoices`);
   invByNumberEF = {};
   rows.forEach(r=>{ invByNumberEF[r.number] = r; });
 }
@@ -894,7 +925,10 @@ const BS_ROWS_PASIVO = [
 ];
 const COLORS_BS = ['#2563eb','#22c55e','#f59e0b','#a78bfa','#6366f1','#ec4899','#10b981'];
 function activoTotal(bs){ return BS_ROWS_ACTIVO.reduce((s,r)=>s+bs[r.key],0); }
-function pasivoTotal(bs){ return BS_ROWS_PASIVO.reduce((s,r)=>s+bs[r.key],0); }
+// Pasivo se muestra con signo "natural" (acreedor = positivo): es el opuesto de Débito−Crédito.
+// Sin saldos de apertura, en el año se pagó más de lo que se devengó, por eso puede quedar negativo.
+function pasivoLinea(bs, key){ return -bs[key]; }
+function pasivoTotal(bs){ return -BS_ROWS_PASIVO.reduce((s,r)=>s+bs[r.key],0); }
 function capitalDerivado(bs){ return activoTotal(bs) - pasivoTotal(bs); }
 function poblarSelectorMesBS(){
   const sel = qs('f-mes-bs');
@@ -908,15 +942,21 @@ function renderBalance(){
   if (bsVista === 'foto') {
     const bs = acumuladoHasta(bsMesCierre).bs;
     const activo = activoTotal(bs), pasivo = pasivoTotal(bs), capital = capitalDerivado(bs);
-    qs('balance-desc').textContent = `Acumulado al cierre de ${bsMesCierre}. Sin saldos de apertura: cada renglón es el acumulado desde el inicio del año. Tocá un renglón para ver sus cuentas.`;
+    qs('balance-desc').textContent = `Acumulado al cierre de ${bsMesCierre}. Sin saldos de apertura: cada renglón es el acumulado desde el inicio del año. Un pasivo negativo significa que en el año se pagó más de lo devengado. Tocá un renglón para ver sus cuentas.`;
     qs('tbl-bs-head').innerHTML = '<tr><th style="text-align:left">Concepto</th><th>Monto</th></tr>';
     let html = `<tr class="subtotal"><td>ACTIVO</td><td>${fmt(activo)}</td></tr>`;
     BS_ROWS_ACTIVO.forEach(r => html += `<tr class="row-clickable" onclick="verDetalleLineaBS('${r.key}')"><td>${r.label}</td><td class="${amtClass(bs[r.key])}">${fmt(bs[r.key])}</td></tr>`);
     html += `<tr class="subtotal"><td>PASIVO</td><td class="${amtClass(pasivo)}">${fmt(pasivo)}</td></tr>`;
-    BS_ROWS_PASIVO.forEach(r => html += `<tr class="row-clickable" onclick="verDetalleLineaBS('${r.key}')"><td>${r.label}</td><td class="${amtClass(bs[r.key])}">${fmt(bs[r.key])}</td></tr>`);
+    BS_ROWS_PASIVO.forEach(r => html += `<tr class="row-clickable" onclick="verDetalleLineaBS('${r.key}')"><td>${r.label}</td><td class="${amtClass(pasivoLinea(bs,r.key))}">${fmt(pasivoLinea(bs,r.key))}</td></tr>`);
     html += `<tr class="subtotal"><td>CAPITAL</td><td>${fmt(capital)}</td></tr>`;
     html += `<tr><td>Resultado del ejercicio</td><td>${fmt(capital)}</td></tr>`;
     html += `<tr class="subtotal"><td>TOTAL PASIVO + CAPITAL</td><td>${fmt(pasivo+capital)}</td></tr>`;
+    // Control: el resultado del ejercicio del Balance debe coincidir con el Resultado neto del P&L
+    // (sin la reclasificación de dividendos, que en el P&L se muestra aparte).
+    const plAcum = sumarMeses(ALL_MONTHS.filter(mk => mk <= bsMesCierre)).pl;
+    const netoPL = calcPLDerivados(plAcum).resultado_neto - plAcum.dividendos;
+    const dif = capital - netoPL;
+    html += `<tr class="pct-row"><td>Control vs. Resultado neto del P&amp;L</td><td>${Math.abs(dif) < 1 ? '✓ coincide' : 'diferencia ' + fmt(dif)}</td></tr>`;
     qs('tbl-bs-body').innerHTML = html;
     renderComposicionChart(bs, activo, pasivo, capital);
   } else {
@@ -927,7 +967,7 @@ function renderBalance(){
     let html = '<tr class="subtotal"><td>ACTIVO</td>' + cols.map(c=>`<td>${fmt(activoTotal(c.bs))}</td>`).join('') + '</tr>';
     BS_ROWS_ACTIVO.forEach(r => html += `<tr class="row-clickable" onclick="verDetalleLineaBS('${r.key}')"><td>${r.label}</td>` + cols.map(c=>`<td class="${amtClass(c.bs[r.key])}">${fmt(c.bs[r.key])}</td>`).join('') + '</tr>');
     html += '<tr class="subtotal"><td>PASIVO</td>' + cols.map(c=>`<td class="${amtClass(pasivoTotal(c.bs))}">${fmt(pasivoTotal(c.bs))}</td>`).join('') + '</tr>';
-    BS_ROWS_PASIVO.forEach(r => html += `<tr class="row-clickable" onclick="verDetalleLineaBS('${r.key}')"><td>${r.label}</td>` + cols.map(c=>`<td class="${amtClass(c.bs[r.key])}">${fmt(c.bs[r.key])}</td>`).join('') + '</tr>');
+    BS_ROWS_PASIVO.forEach(r => html += `<tr class="row-clickable" onclick="verDetalleLineaBS('${r.key}')"><td>${r.label}</td>` + cols.map(c=>`<td class="${amtClass(pasivoLinea(c.bs,r.key))}">${fmt(pasivoLinea(c.bs,r.key))}</td>`).join('') + '</tr>');
     html += '<tr class="subtotal"><td>CAPITAL</td>' + cols.map(c=>`<td>${fmt(capitalDerivado(c.bs))}</td>`).join('') + '</tr>';
     qs('tbl-bs-body').innerHTML = html;
   }
@@ -957,10 +997,11 @@ function verDetalleLineaBS(bucketKey){
   qs('md-titulo').textContent = label;
   qs('md-sub').textContent = `Acumulado al ${cutoff}`;
   const cuentas = accountsRaw.filter(a => bucketBalance(a.number) === bucketKey);
+  const signo = BS_ROWS_PASIVO.some(r => r.key === bucketKey) ? -1 : 1; // mismo signo que la línea del Balance
   let html = '<div class="tbl-scroll"><table><thead><tr><th style="text-align:left">Cuenta</th><th>Saldo acumulado</th></tr></thead><tbody>';
   let filas = 0;
   cuentas.forEach(a => {
-    const val = acc.accounts[a.number] || 0;
+    const val = signo * (acc.accounts[a.number] || 0);
     if (Math.abs(val) < 0.5) return;
     filas++;
     html += `<tr><td>${(a.displayName||a.number).trim()} <span style="color:var(--t3);font-family:var(--mono);font-size:11px">(${a.number})</span></td><td class="${amtClass(val)}">${fmt(val)}</td></tr>`;
@@ -1084,6 +1125,130 @@ function renderCashFlowDirecto(){
   qs('tbl-cf-body').innerHTML = html;
 }
 
+
+// ════════════════════════════════════════════════════════════
+//  PLAN DE CUENTAS — consulta de todas las cuentas con su movimiento
+// ════════════════════════════════════════════════════════════
+let CTA_STATS = {};            // accNo -> { n, debe, haber } del año cargado
+let ctaSort = { col:'numero', dir:1 };
+function buildCtaStats(){
+  CTA_STATS = {};
+  glRawEntries.forEach(e => {
+    const a = e.G_L_Account_No; if (!a) return;
+    const s = CTA_STATS[a] || (CTA_STATS[a] = { n:0, debe:0, haber:0 });
+    s.n++; s.debe += e.Debit_Amount || 0; s.haber += e.Credit_Amount || 0;
+  });
+}
+const SIN_CLASIFICAR = '— Sin clasificar';
+function lineaDeCuenta(accNo){
+  if (esCtaMaquila(accNo)) return 'P&L · Maquila (terceros / extracciones)';
+  const pl = bucketPL(accNo);
+  if (pl === 'ingresos') return 'P&L · Ingresos por servicios';
+  if (pl === 'costo_directo') return 'P&L · Costo directo de servicio';
+  if (pl === 'estructura') return 'P&L · Estructura / overhead';
+  const bs = bucketBalance(accNo);
+  if (bs) {
+    const lbl = [...BS_ROWS_ACTIVO, ...BS_ROWS_PASIVO].find(r => r.key === bs)?.label || bs;
+    return 'Balance · ' + lbl + (esCtaDividendos(accNo) ? ' (+ Dividendos en P&L)' : '');
+  }
+  return SIN_CLASIFICAR;
+}
+function filasCuentas(){
+  const porNumero = {};
+  accountsRaw.forEach(a => { porNumero[a.number] = { numero:a.number, nombre:(a.displayName||'').trim(), tipo:a.accountType || a.category || '—', bloqueada:!!a.blocked }; });
+  Object.keys(CTA_STATS).forEach(n => { if (!porNumero[n]) porNumero[n] = { numero:n, nombre:'(cuenta no listada en el plan)', tipo:'—', bloqueada:false }; });
+  return Object.values(porNumero).map(r => {
+    const s = CTA_STATS[r.numero] || { n:0, debe:0, haber:0 };
+    return { ...r, linea: lineaDeCuenta(r.numero), n:s.n, debe:s.debe, haber:s.haber, saldo:s.debe - s.haber };
+  });
+}
+function renderCuentas(){
+  if (!accountsRaw.length) return;
+  const todas = filasCuentas();
+  // selectores (se rearman conservando la selección)
+  const selL = qs('cta-linea'), selT = qs('cta-tipo');
+  const lineaSel = selL.value, tipoSel = selT.value;
+  const lineas = [...new Set(todas.map(r => r.linea))].sort();
+  const tipos = [...new Set(todas.map(r => r.tipo))].sort();
+  selL.innerHTML = '<option value="">Todas las líneas</option>' + lineas.map(l => `<option value="${l.replace(/"/g,'&quot;')}">${l}</option>`).join('');
+  selT.innerHTML = '<option value="">Todos los tipos</option>' + tipos.map(t => `<option value="${t}">${t}</option>`).join('');
+  if (lineas.includes(lineaSel)) selL.value = lineaSel;
+  if (tipos.includes(tipoSel)) selT.value = tipoSel;
+
+  const q = (qs('cta-search').value || '').trim().toUpperCase();
+  const soloMov = qs('cta-solo-mov').checked;
+  let filas = todas.filter(r =>
+    (!q || r.numero.toUpperCase().includes(q) || r.nombre.toUpperCase().includes(q)) &&
+    (!selL.value || r.linea === selL.value) && (!selT.value || r.tipo === selT.value) && (!soloMov || r.n > 0));
+
+  const k = ctaSort.col, d = ctaSort.dir;
+  filas.sort((a,b) => {
+    const va = a[k], vb = b[k];
+    return (typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb))) * d;
+  });
+
+  // KPIs sobre TODAS las cuentas (no sobre el filtro)
+  const conMov = todas.filter(r => r.n > 0);
+  const sinClas = conMov.filter(r => r.linea === SIN_CLASIFICAR);
+  qs('cta-kpis').innerHTML = `
+    <div class="kpi"><div class="k-label">Cuentas en el plan</div><div class="k-val">${accountsRaw.length}</div></div>
+    <div class="kpi"><div class="k-label">Con movimientos en ${currentYear === 'all' ? 'todos los años' : currentYear}</div><div class="k-val">${conMov.length}</div></div>
+    <div class="kpi"><div class="k-label">Sin clasificar con movimiento</div><div class="k-val" style="color:${sinClas.length?'var(--amber)':'var(--green)'}">${sinClas.length}</div></div>
+    <div class="kpi"><div class="k-label">Saldo de sin clasificar</div><div class="k-val">${fmt(sinClas.reduce((s,r)=>s+r.saldo,0))}</div></div>`;
+  qs('cta-contador').textContent = `${filas.length} de ${todas.length} cuentas`;
+
+  const cols = [['numero','Cuenta','left'],['nombre','Nombre','left'],['tipo','Tipo','left'],['linea','Dónde se usa','left'],['n','Asientos',''],['debe','Débito',''],['haber','Crédito',''],['saldo','Saldo (D−C)','']];
+  qs('tbl-cuentas-head').innerHTML = '<tr>' + cols.map(([key,lbl,al]) =>
+    `<th onclick="ordenarCuentas('${key}')" style="cursor:pointer;${al==='left'?'text-align:left':''}">${lbl}${ctaSort.col===key?(ctaSort.dir>0?' ▲':' ▼'):''}</th>`).join('') + '</tr>';
+  qs('tbl-cuentas-body').innerHTML = filas.length ? filas.map(r => `<tr class="row-clickable" onclick="verDetalleCuenta('${r.numero.replace(/'/g,"\\'")}')">
+      <td style="font-family:var(--mono);font-size:12px;white-space:nowrap">${r.numero}</td>
+      <td style="font-family:var(--sans)">${r.nombre}${r.bloqueada?' <span style="color:var(--t3);font-size:10px">(bloqueada)</span>':''}</td>
+      <td style="font-family:var(--sans);color:var(--t3);font-size:11px">${r.tipo}</td>
+      <td style="font-family:var(--sans);font-size:11px;color:${r.linea===SIN_CLASIFICAR&&r.n>0?'var(--amber)':'var(--t2)'};white-space:normal">${r.linea}</td>
+      <td>${r.n || '—'}</td>
+      <td>${r.n ? fmt(r.debe) : '—'}</td>
+      <td>${r.n ? fmt(r.haber) : '—'}</td>
+      <td class="${amtClass(r.saldo)}">${r.n ? fmt(r.saldo) : '—'}</td></tr>`).join('')
+    : '<tr><td colspan="8" class="empty">Sin cuentas que coincidan con el filtro</td></tr>';
+}
+function ordenarCuentas(col){
+  ctaSort = { col, dir: ctaSort.col === col ? -ctaSort.dir : 1 };
+  renderCuentas();
+}
+function verDetalleCuenta(accNo){
+  const a = accountsByNumber[accNo];
+  const entradas = glRawEntries.filter(e => e.G_L_Account_No === accNo);
+  qs('md-titulo').textContent = (a?.displayName || accNo).trim();
+  qs('md-sub').textContent = `${accNo} · ${lineaDeCuenta(accNo)}`;
+  const debe = entradas.reduce((s,e)=>s+(e.Debit_Amount||0),0), haber = entradas.reduce((s,e)=>s+(e.Credit_Amount||0),0);
+  const meses = {};
+  const porPersona = {}, porContrato = {};
+  entradas.forEach(e => {
+    const mk = mesKeyOf(e.Posting_Date); const net = (e.Debit_Amount||0)-(e.Credit_Amount||0);
+    const m = meses[mk] || (meses[mk] = { n:0, debe:0, haber:0 });
+    m.n++; m.debe += e.Debit_Amount||0; m.haber += e.Credit_Amount||0;
+    const p = dimSetToRecurso[e.Dimension_Set_ID]; const kP = p ? (empleadosMap[p]||p) : '(sin persona)';
+    porPersona[kP] = (porPersona[kP]||0) + net;
+    const c = dimSetToContrato[e.Dimension_Set_ID]; const kC = c ? (contratoMap[c]||c) : '(sin contrato)';
+    porContrato[kC] = (porContrato[kC]||0) + net;
+  });
+  const top = o => Object.entries(o).filter(([,v])=>Math.abs(v)>0.5).sort((x,y)=>Math.abs(y[1])-Math.abs(x[1])).slice(0,10);
+  const tablaTop = (titulo, o) => { const t = top(o); return t.length ? `<div class="modal-section-title">${titulo}</div><div class="tbl-scroll"><table><tbody>${t.map(([k,v])=>`<tr><td>${k}</td><td class="${amtClass(v)}">${fmt(v)}</td></tr>`).join('')}</tbody></table></div>` : ''; };
+  let html = `<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="kpi"><div class="k-label">Asientos</div><div class="k-val">${entradas.length}</div></div>
+    <div class="kpi"><div class="k-label">Débito</div><div class="k-val">${fmt(debe)}</div></div>
+    <div class="kpi"><div class="k-label">Crédito</div><div class="k-val">${fmt(haber)}</div></div>
+    <div class="kpi"><div class="k-label">Saldo (D−C)</div><div class="k-val ${amtClass(debe-haber)}">${fmt(debe-haber)}</div></div></div>`;
+  if (!entradas.length) html += '<div class="empty">Esta cuenta no tiene movimientos en el período cargado.</div>';
+  else {
+    html += `<div class="modal-section-title">Por mes</div><div class="tbl-scroll"><table><thead><tr><th style="text-align:left">Mes</th><th>Asientos</th><th>Débito</th><th>Crédito</th><th>Neto (D−C)</th></tr></thead><tbody>` +
+      Object.keys(meses).sort().map(mk => { const m = meses[mk]; return `<tr><td>${mk}</td><td>${m.n}</td><td>${fmt(m.debe)}</td><td>${fmt(m.haber)}</td><td class="${amtClass(m.debe-m.haber)}">${fmt(m.debe-m.haber)}</td></tr>`; }).join('') + '</tbody></table></div>';
+    html += tablaTop('Principales personas (RECURSO)', porPersona) + tablaTop('Principales contratos', porContrato);
+  }
+  qs('md-body').innerHTML = html;
+  qs('modal-detalle').classList.add('active');
+}
+
 // ── Utilidad compartida por todos los modales ──
 function fmtRezagoEF(dias){
   if (dias==null) return '<span style="color:var(--t3)">—</span>';
@@ -1150,6 +1315,7 @@ function switchTab(tab){
   qs('tab-resultados').style.display = tab === 'resultados' ? 'block' : 'none';
   qs('tab-flujo').style.display = tab === 'flujo' ? 'block' : 'none';
   qs('tab-balance').style.display = tab === 'balance' ? 'block' : 'none';
+  qs('tab-cuentas').style.display = tab === 'cuentas' ? 'block' : 'none';
 }
 function wireSeg(id, onChange){
   const el = qs(id);
@@ -1182,13 +1348,14 @@ function toggleTheme(){
   document.documentElement.setAttribute('data-theme', theme);
   qs('btn-theme').textContent = theme === 'dark' ? '☀️ Ver en claro' : '🌙 Ver en oscuro';
 }
-function renderAll(){ renderPL(); renderCashFlow(); renderBalance(); }
+function renderAll(){ renderPL(); renderCashFlow(); renderBalance(); renderCuentas(); }
 
 // ════════════════════════════════════════════════════════════
 //  INIT
 // ════════════════════════════════════════════════════════════
 async function cargarTodo(year){
   clearError();
+  AVISOS_CARGA.length = 0;
   setLive('busy', 'BC · Sincronizando…');
   try {
     setLoadingMsg('Verificando conexión con el proxy…');
@@ -1217,10 +1384,12 @@ async function cargarTodo(year){
     buildMonthly();
     buildFacturacionPorEmpleado(rawMovs);
     buildCashFlowDirecto();
+    buildCtaStats();
     poblarSelectorMesBS();
 
     qs('cobertura-label').textContent = ALL_MONTHS.length ? `${ALL_MONTHS[0]} — ${ALL_MONTHS[ALL_MONTHS.length-1]}` : '—';
     renderAll();
+    mostrarAvisosCarga();
     setLive('ok', 'BC · En vivo');
     qs('loading-screen').style.display = 'none';
   } catch (e) {

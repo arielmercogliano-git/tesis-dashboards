@@ -198,10 +198,27 @@ async function bcFetch(url){
   if (!r.ok){ const e=await r.text(); throw new Error(`/bc ${r.status}: ${e.slice(0,300)}`); }
   return r.json();
 }
-async function bcFetchAll(url, cap=30000){
-  const rows=[]; let next=url, guard=0;
-  while (next && guard<25){ const d=await bcFetch(next); rows.push(...(d.value||[])); next=d['@odata.nextLink']||null; guard++; if(rows.length>=cap) break; }
+// Lee TODAS las páginas de BC (sigue @odata.nextLink). Sin $top en las URLs: BC devuelve todo lo
+// que entra en una página (hasta 20,000) y pagina solo el resto. El tope de abajo es solo una red
+// de seguridad contra consultas descontroladas; si se llegara a alcanzar, se avisa en pantalla.
+const AVISOS_CARGA = [];
+async function bcFetchAll(url, cap = 500000){
+  const rows = [];
+  let next = url;
+  while (next && rows.length < cap) {
+    const d = await bcFetch(next);
+    rows.push(...(d.value || []));
+    next = d['@odata.nextLink'] || null;
+  }
+  if (next) AVISOS_CARGA.push(`lectura cortada en ${rows.length} registros (${url.split('?')[0].split('/').pop()})`);
   return rows;
+}
+function mostrarAvisosCarga(){
+  if (!AVISOS_CARGA.length) return;
+  const el = qs('app-error');
+  if (!el) return;
+  el.style.display = 'block';
+  el.textContent = '⚠️ Datos incompletos: ' + [...new Set(AVISOS_CARGA)].join(' | ');
 }
 async function pingProxy(){ const r=await fetch(`${PROXY}/ping`); if(!r.ok) throw new Error('Proxy no disponible'); return r.json(); }
 async function getCompanyId(){
@@ -258,7 +275,7 @@ function parsearPeriodoTarea(desc){
 }
 let taskPeriodMap = {};
 async function cargarJobTaskLines(){
-  const rows = await bcFetchAll(`${ODATA_BASE}/Job_Task_Lines?$top=3000`);
+  const rows = await bcFetchAll(`${ODATA_BASE}/Job_Task_Lines`);
   taskPeriodMap = {};
   rows.forEach(t=>{ const p=parsearPeriodoTarea(t.Description); if(p) taskPeriodMap[`${t.Job_No}||${t.Job_Task_No}`]=p; });
 }
@@ -292,22 +309,22 @@ let EMP_CLIENTES = {};     // empCod -> Set de nombres de cliente a los que fact
 
 async function cargarEmpleados(){
   const cid = await getCompanyId();
-  const dims = await bcFetch(`${V2_BASE}/companies(${cid})/dimensions?$top=50`);
+  const dims = await bcFetch(`${V2_BASE}/companies(${cid})/dimensions`);
   const recurso = (dims.value||[]).find(d=>(d.code||'').toUpperCase()==='RECURSO');
   if (!recurso) return;
-  const vals = await bcFetchAll(`${V2_BASE}/companies(${cid})/dimensions(${recurso.id})/dimensionValues?$top=2000`);
+  const vals = await bcFetchAll(`${V2_BASE}/companies(${cid})/dimensions(${recurso.id})/dimensionValues`);
   empleadosMap = {};
   vals.forEach(v=>{ if(v.code) empleadosMap[v.code]=v.displayName||v.name||v.code; });
 }
 async function cargarMovsTodos(){
   // 'all' — necesitamos el histórico completo para poder scrollear a meses anteriores.
   // Traemos Usage Y Sale: Sale es lo que nos da el N° de factura y el monto de cada tarea.
-  return bcFetchAll(`${ODATA_BASE}/MovsProyecto?$top=30000`, 60000);
+  return bcFetchAll(`${ODATA_BASE}/MovsProyecto`);
 }
 let invByNumber = {}; // N° factura -> {status, customerName, invoiceDate, dueDate, ...}
 async function cargarFacturasVenta(){
   const cid = await getCompanyId();
-  const rows = await bcFetchAll(`${V2_BASE}/companies(${cid})/salesInvoices?$top=2000`);
+  const rows = await bcFetchAll(`${V2_BASE}/companies(${cid})/salesInvoices`);
   invByNumber = {};
   rows.forEach(r=>{ invByNumber[r.number] = r; });
 }
@@ -450,6 +467,7 @@ function toggleTheme(){
 
 async function cargarTodo(){
   clearError();
+  AVISOS_CARGA.length = 0;
   setLive('busy','BC · Sincronizando…');
   try{
     setLoadingMsg('Verificando conexión con el proxy…');
@@ -468,6 +486,8 @@ async function cargarTodo(){
     buildGrid(allMovs);
     poblarSelectorClientes();
     renderGrid();
+
+    mostrarAvisosCarga();
 
     setLive('ok','BC · En vivo');
     qs('loading-screen').style.display='none';
