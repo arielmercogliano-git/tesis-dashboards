@@ -50,6 +50,8 @@ h1 { font-size:24px; font-weight:700; margin-bottom:6px; }
 .txt-verde { color:var(--green); } .txt-amarillo { color:var(--amber); } .txt-rojo { color:var(--red); } .txt-sd { color:var(--t3); }
 
 .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
+.grupo-titulo { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:var(--t2); margin:26px 0 10px; }
+.grupo-titulo:first-child { margin-top:4px; }
 .kpi-card { background:var(--s1); border:1px solid var(--border); border-left:5px solid var(--gris); border-radius:12px; padding:18px 20px; cursor:pointer; transition:transform .1s, box-shadow .1s; }
 .kpi-card:hover { transform:translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,.08); }
 .kpi-card.verde { border-left-color:var(--green); } .kpi-card.amarillo { border-left-color:var(--amber); } .kpi-card.rojo { border-left-color:var(--red); }
@@ -131,7 +133,7 @@ tr.total td { font-weight:700; background:var(--s2); }
   <p class="page-desc">Cada indicador se muestra como semáforo: <b style="color:var(--green)">verde</b> dentro de lo esperado, <b style="color:var(--amber)">amarillo</b> cerca de desviarse y <b style="color:var(--red)">rojo</b> desviado. Tocá un indicador para ver los datos con los que se calcula. Los umbrales se pueden ajustar en ⚙ Umbrales.</p>
   <div class="app-error" id="app-error"></div>
   <div class="resumen" id="resumen"></div>
-  <div class="grid" id="grid"></div>
+  <div id="grid"></div>
   <p class="nota" id="nota-pie"></p>
 </div>
 
@@ -213,14 +215,29 @@ const KPI_DEF = {
   cartera_vencida: { nombre:'Cartera vencida',            mejor:'menor', unidad:'%',     desc:'Saldo vencido / saldo pendiente de cobro' },
   dso:             { nombre:'Días de venta pendientes',   mejor:'menor', unidad:' días', desc:'Saldo pendiente / ventas de los últimos 90 días × 90' },
   concentracion:   { nombre:'Concentración de clientes',  mejor:'menor', unidad:'%',     desc:'Participación del cliente principal en la facturación' },
+  margen_operativo:{ nombre:'Margen operativo',           mejor:'mayor', unidad:'%',     desc:'Resultado operativo / ingresos (misma clasificación del Estado de Resultados)' },
+  sin_facturar:    { nombre:'Horas sin facturar (estimado)', mejor:'menor', unidad:' días', etiquetaUmbral:'Días desde el cierre del último período facturado: ', desc:'Días desde el cierre del último período facturado, ponderado por proyecto' },
+  sin_horas:       { nombre:'Empleados sin horas en el mes', mejor:'menor', unidad:'%',  desc:'% de empleados facturables sin horas en el mes de referencia' },
+  valor_hora:      { nombre:'Valor/hora promedio',        mejor:'mayor', unidad:'%',     etiquetaUmbral:'Variación vs. período anterior: ', desc:'Valor/hora facturado y su variación frente al período anterior' },
+  venc_proximo:    { nombre:'Facturas con vencimiento próximo', mejor:'menor', unidad:' facturas', desc:'Facturas abiertas que vencen en los próximos días' },
 };
-const KPI_ORDEN = ['rentabilidad','rezago','cartera_vencida','dso','concentracion'];
+const KPI_GRUPOS = [
+  { titulo:'Rentabilidad',            ids:['rentabilidad','margen_operativo','valor_hora'] },
+  { titulo:'Facturación y cobranza',  ids:['sin_facturar','rezago','cartera_vencida','dso','venc_proximo','concentracion'] },
+  { titulo:'Equipo',                  ids:['sin_horas'] },
+];
+const KPI_ORDEN = KPI_GRUPOS.flatMap(g => g.ids);
 const UMBRALES_DEFECTO = {
   rentabilidad:    { verde:50, amarillo:35 },
   rezago:          { verde:20, amarillo:35 },
   cartera_vencida: { verde:10, amarillo:25 },
   dso:             { verde:30, amarillo:45 },
   concentracion:   { verde:50, amarillo:70 },
+  margen_operativo:{ verde:40, amarillo:30 },
+  sin_facturar:    { verde:45, amarillo:60 },
+  sin_horas:       { verde:8,  amarillo:15 },
+  valor_hora:      { verde:-2, amarillo:-5 },
+  venc_proximo:    { verde:0,  amarillo:2 },
 };
 const UMB_KEY = 'tesis_kpi_umbrales';
 function cargarUmbrales(){
@@ -231,6 +248,12 @@ function cargarUmbrales(){
   return out;
 }
 let UMBRALES = cargarUmbrales();
+const PARAMS_KEY = 'tesis_kpi_params';
+function cargarParams(){
+  let g = {}; try { g = JSON.parse(localStorage.getItem(PARAMS_KEY) || '{}') || {}; } catch(e) { g = {}; }
+  return { diasVencimiento: (typeof g.diasVencimiento === 'number' && g.diasVencimiento >= 1) ? Math.round(g.diasVencimiento) : 7 };
+}
+let PARAMS = cargarParams();
 
 // Semáforo: 'mayor' = más alto es mejor; 'menor' = más bajo es mejor.
 function semaforo(id, v){
@@ -262,11 +285,11 @@ function parsearPeriodoTarea(desc){
   if (!desc) return null;
   const d = desc.toUpperCase();
   let m = d.match(/DEL\s+(\d{1,2})\/(\d{1,2})\/(\d{4})\s+AL\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (m) return { mes: mesConMayoriaDeDias(+m[1],+m[2],+m[3],+m[4],+m[5],+m[6]), label:`${m[1]}/${m[2]}/${m[3]} – ${m[4]}/${m[5]}/${m[6]}`, finDate: isoDate(+m[6],+m[5],+m[4]) };
+  if (m) return { mes: mesConMayoriaDeDias(+m[1],+m[2],+m[3],+m[4],+m[5],+m[6]), label:`${m[1]}/${m[2]}/${m[3]} – ${m[4]}/${m[5]}/${m[6]}`, iniDate: isoDate(+m[3],+m[2],+m[1]), finDate: isoDate(+m[6],+m[5],+m[4]) };
   m = d.match(/\b([A-ZÑ]{3,12})-([A-ZÑ]{3,12})\s+(\d{4})\b/);
-  if (m){ const m1=MESES_ES[m[1]]||MESES_ABR[m[1]], m2=MESES_ES[m[2]]||MESES_ABR[m[2]]; if (m1) return { mes:`${m[3]}-${String(m1).padStart(2,'0')}`, label:`${m[1]}-${m[2]} ${m[3]}`, finDate: m2?isoDate(+m[3],m2,diasEnMes(+m[3],m2)):null }; }
+  if (m){ const m1=MESES_ES[m[1]]||MESES_ABR[m[1]], m2=MESES_ES[m[2]]||MESES_ABR[m[2]]; if (m1) return { mes:`${m[3]}-${String(m1).padStart(2,'0')}`, label:`${m[1]}-${m[2]} ${m[3]}`, iniDate: isoDate(+m[3],m1,1), finDate: m2?isoDate(+m[3],m2,diasEnMes(+m[3],m2)):null }; }
   m = d.match(/\b([A-ZÑ]{3,12})\s+(\d{4})\b/);
-  if (m){ const mm=MESES_ES[m[1]]||MESES_ABR[m[1]]; if (mm) return { mes:`${m[2]}-${String(mm).padStart(2,'0')}`, label:`${m[1]} ${m[2]}`, finDate: isoDate(+m[2],mm,diasEnMes(+m[2],mm)) }; }
+  if (m){ const mm=MESES_ES[m[1]]||MESES_ABR[m[1]]; if (mm) return { mes:`${m[2]}-${String(mm).padStart(2,'0')}`, label:`${m[1]} ${m[2]}`, iniDate: isoDate(+m[2],mm,1), finDate: isoDate(+m[2],mm,diasEnMes(+m[2],mm)) }; }
   return null;
 }
 function normalizarCliente(n){
@@ -280,7 +303,17 @@ const NOMINA_KEYWORDS = ['SUELDO','SALARIO','HORAS EXTRA','GRATIFICACION','PREMI
 let empleadosMap = {}, accountsByNumber = {}, dimSetToRecurso = {}, taskPeriodMap = {}, SALES = [];
 let FACT = {};    // emp -> [{mes, horas, monto, periodoLabel, periodoFin, factura, fechaFactura, cliente, estado}]
 let COSTO = {};   // emp -> { mes -> { cuenta -> monto(D−C) } }
-let MESES = [];   // meses con facturación o costo, ordenados
+let MESES = [];   // meses con horas facturadas (por período de servicio), ordenados
+let PL = {}, PLCTA = {}, PL_MESES_ING = [];   // Estado de resultados por mes de contabilización
+function lineaPL(acc){
+  const p = acc.slice(0,3);
+  if (['410','420','430','440'].includes(p)) return 'ingresos';
+  if (accountBase(acc) === '511007') return 'maquila_terceros';
+  if (p === '511' || ['512','513','514','520'].includes(p)) return 'costo_directo';
+  if (p === '531' || p === '532' || p === '533' || /^(55|56|57|6)/.test(acc)) return 'estructura';
+  return null;
+}
+function nuevoPL(){ return { ingresos:0, costo_directo:0, maquila_terceros:0, estructura:0, extracciones:0, sin_clasificar:0 }; }
 
 async function cargarEmpleados(){
   const cid = await getCompanyId();
@@ -339,30 +372,49 @@ function construirBase(movs, gl){
     const inv = factura ? invByNumber[factura] : null;
     (FACT[emp] = FACT[emp] || []).push({
       mes, horas: parseFloat(u.Quantity||0), monto: Math.abs(parseFloat(u.Total_Price||0)),
-      periodoLabel: per ? per.label : (u.Description||'—'), periodoFin: per ? per.finDate : null,
+      job: u.Job_No, periodoIni: per ? per.iniDate : null, periodoLabel: per ? per.label : (u.Description||'—'), periodoFin: per ? per.finDate : null,
       factura, fechaFactura: inv?.invoiceDate || null, cliente: normalizarCliente(inv?.customerName) || null,
       estado: inv ? inv.status : (factura ? 'Desconocido' : 'Sin facturar'),
     });
   });
+  PL = {}; PLCTA = {};
   gl.forEach(e => {
-    const emp = dimSetToRecurso[e.Dimension_Set_ID]; if (!emp || SOCIOS.includes(emp)) return;
-    const acc = e.G_L_Account_No || ''; if (!/^[56]/.test(acc)) return;       // solo cuentas de costo/gasto
+    const emp = dimSetToRecurso[e.Dimension_Set_ID];
+    const acc = e.G_L_Account_No || '';
     const mes = mesKey(e.Posting_Date); if (!mes) return;
     const net = (e.Debit_Amount||0) - (e.Credit_Amount||0);
+    // Estado de resultados (misma lógica que Estados Financieros): movimientos de socios en cuentas de resultados
+    // van a "extracciones" y quedan fuera del resultado operativo.
+    if (/^[4-9]/.test(acc)) {
+      const pl = (PL[mes] = PL[mes] || nuevoPL());
+      if (emp && SOCIOS.includes(emp)) pl.extracciones += -net;
+      else { const lin = lineaPL(acc);
+        if (lin) { pl[lin] += -net; const pc = (PLCTA[mes] = PLCTA[mes] || {}); const lc = (pc[lin] = pc[lin] || {}); lc[acc] = (lc[acc]||0) + (-net); }
+        else pl.sin_clasificar += -net; }
+    }
+    // Costo atribuido a cada empleado
+    if (!emp || SOCIOS.includes(emp) || !/^[56]/.test(acc)) return;
     const porMes = (COSTO[emp] = COSTO[emp] || {});
     const porCta = (porMes[mes] = porMes[mes] || {});
     porCta[acc] = (porCta[acc]||0) + net;
   });
-  const set = new Set();
-  Object.values(FACT).forEach(ls => ls.forEach(l => set.add(l.mes)));
-  Object.values(COSTO).forEach(pm => Object.keys(pm).forEach(m => set.add(m)));
-  MESES = [...set].sort();
+  // Meses de referencia = ciclo mensual de facturación (líneas con período de servicio). Los proyectos de alcance fijo no tienen
+  // períodos y usan el mes de contabilización: no deben definir "el último mes", porque podrían ser unas pocas horas sueltas.
+  const setCiclo = new Set(), setTodos = new Set();
+  Object.values(FACT).forEach(ls => ls.forEach(l => { setTodos.add(l.mes); if (l.periodoFin) setCiclo.add(l.mes); }));
+  MESES = [...(setCiclo.size ? setCiclo : setTodos)].sort();
+  PL_MESES_ING = Object.keys(PL).filter(m => Math.abs(PL[m].ingresos) > 0.5).sort();
 }
 
 // ── Ventana de análisis ──
+// Las ventanas se miden sobre los meses con horas facturadas. Los costos posteriores al último mes facturado
+// se dejan afuera: todavía no tienen su facturación en Business Central y distorsionarían la rentabilidad.
 function mesesVentana(){ if (ventana==='all') return null; return MESES.slice(ventana==='3m' ? -3 : -1); }
-function enVentana(mes){ const v = mesesVentana(); return !v || v.includes(mes); }
-function textoVentana(){ const v = mesesVentana(); return v ? (v.length>1 ? `${v[0]} a ${v[v.length-1]}` : v[0]) : (anio==='all' ? 'todos los años' : 'año ' + anio); }
+function corteMes(){ return MESES.length ? MESES[MESES.length-1] : '9999-99'; }
+function enVentana(mes){ const v = mesesVentana(); return v ? v.includes(mes) : mes <= corteMes(); }
+function mesesVentanaFacturas(){ if (ventana==='all') return null; const ms = [...new Set(SALES.filter(i=>i.invoiceDate).map(i=>mesKey(i.invoiceDate)))].sort(); return ms.slice(ventana==='3m' ? -3 : -1); }
+function enVentanaFacturas(mes){ const v = mesesVentanaFacturas(); return !v || v.includes(mes); }
+function textoVentana(){ const v = mesesVentana(); return v ? (v.length>1 ? `${v[0]} a ${v[v.length-1]}` : v[0]) : ((anio==='all' ? 'todos los años' : 'año ' + anio) + (MESES.length ? ` · hasta ${corteMes()}` : '')); }
 
 // ════════════════════════════════════════════════════════════
 //  CÁLCULO DE INDICADORES
@@ -435,7 +487,7 @@ function calcDSO(){
 }
 function calcConcentracion(){
   const por = {}; let total = 0;
-  SALES.filter(i => i.status!=='Canceled' && i.status!=='Draft' && i.invoiceDate && enVentana(mesKey(i.invoiceDate))).forEach(i => {
+  SALES.filter(i => i.status!=='Canceled' && i.status!=='Draft' && i.invoiceDate && enVentanaFacturas(mesKey(i.invoiceDate))).forEach(i => {
     const c = normalizarCliente(i.customerName) || 'Sin cliente'; const v = i.totalAmountExcludingTax||0;
     (por[c] = por[c] || { cliente:c, monto:0, facturas:0 }); por[c].monto += v; por[c].facturas++; total += v;
   });
@@ -443,7 +495,126 @@ function calcConcentracion(){
   const pct = total > 0 && lista.length ? lista[0].monto/total*100 : null;
   return { valor: pct, texto: pct==null?'—':fmtPct(pct), sub: lista.length ? `${lista[0].cliente} · ${lista.length} clientes facturados` : 'Sin facturación en el rango', lista, total };
 }
-const CALC = { rentabilidad:calcRentabilidad, rezago:calcRezago, cartera_vencida:calcCarteraVencida, dso:calcDSO, concentracion:calcConcentracion };
+// ── Margen operativo (Estado de Resultados) ──
+function mesesVentanaPL(){ if (ventana==='all') return null; return PL_MESES_ING.slice(ventana==='3m' ? -3 : -1); }
+function plAgregado(){
+  const v = mesesVentanaPL(), t = nuevoPL();
+  const ctas = { ingresos:{}, costo_directo:{}, maquila_terceros:{}, estructura:{} }, filas = [];
+  Object.keys(PL).sort().forEach(m => {
+    if (v && !v.includes(m)) return;
+    const x = PL[m]; Object.keys(t).forEach(k => { t[k] += x[k]; });
+    Object.entries(PLCTA[m]||{}).forEach(([lin, cs]) => Object.entries(cs).forEach(([cta,val]) => { ctas[lin][cta] = (ctas[lin][cta]||0) + val; }));
+    const op = x.ingresos + x.costo_directo + x.maquila_terceros + x.estructura;
+    filas.push({ mes:m, ...x, operativo:op, pct: x.ingresos > 0 ? op/x.ingresos*100 : null });
+  });
+  return { t, ctas, filas };
+}
+function calcMargenOperativo(){
+  const { t, ctas, filas } = plAgregado();
+  const op = t.ingresos + t.costo_directo + t.maquila_terceros + t.estructura;
+  const pct = t.ingresos > 0 ? op/t.ingresos*100 : null;
+  return { valor:pct, texto: pct==null?'—':fmtPct(pct), sub: pct==null ? 'Sin ingresos en el período' : `Resultado operativo ${fmtM(op)} sobre ingresos de ${fmtM(t.ingresos)}`, t, ctas, filas, op };
+}
+
+// ── Valor/hora promedio ──
+function vhPorMes(){
+  const m = {};
+  Object.values(FACT).flat().forEach(l => { const x = (m[l.mes] = m[l.mes] || { h:0, f:0 }); x.h += l.horas; x.f += l.monto; });
+  return m;
+}
+function periodosValorHora(){
+  const ms = MESES;
+  if (ventana === '1m') return { cur: ms.slice(-1), prev: ms.slice(-2,-1), txtCur:'último mes', txtPrev:'mes anterior' };
+  if (ventana === '3m') return { cur: ms.slice(-3), prev: ms.slice(-6,-3), txtCur:'últimos 3 meses', txtPrev:'3 meses anteriores' };
+  return { cur: ms.slice(-3), prev: ms.slice(0,-3), txtCur:'últimos 3 meses', txtPrev:'meses anteriores del año' };
+}
+function calcValorHora(){
+  const por = vhPorMes(), { cur, prev, txtCur, txtPrev } = periodosValorHora();
+  const vh = set => { let h=0, f=0; set.forEach(m => { if (por[m]) { h += por[m].h; f += por[m].f; } }); return h > 0 ? f/h : null; };
+  const vc = vh(cur), vp = vh(prev);
+  const variacion = (vc != null && vp != null && vp > 0) ? (vc/vp - 1)*100 : null;
+  return { valor:vc, valorSem:variacion, texto: vc==null ? '—' : fmtM(vc)+'/h',
+    sub: variacion==null ? 'Sin período anterior con qué comparar' : `${variacion>=0?'▲':'▼'} ${Math.abs(variacion).toFixed(1)}% vs. ${txtPrev} (${fmtM(vp)}/h)`,
+    por, cur, prev, txtCur, txtPrev, vc, vp, variacion };
+}
+
+// ── Empleados sin horas en el mes ──
+let refMesSH = null;
+function horasPorEmpleadoMes(){
+  const h = {};
+  Object.entries(FACT).forEach(([e, ls]) => ls.forEach(l => { const x = (h[e] = h[e] || {}); x[l.mes] = (x[l.mes]||0) + l.horas; }));
+  return h;
+}
+// Base = empleados que facturaron en el mes o en alguno de los 3 meses anteriores. "Sin horas" = base sin horas en el mes.
+function sinHorasEnMes(horasEmp, ms, mes){
+  const i = ms.indexOf(mes), previos = ms.slice(Math.max(0, i-3), i), base = [];
+  Object.keys(horasEmp).forEach(e => { const h = horasEmp[e]; if ((h[mes]||0) > 0 || previos.some(m => (h[m]||0) > 0)) base.push(e); });
+  return { base, sin: base.filter(e => !((horasEmp[e][mes]||0) > 0)) };
+}
+function costoNominaMes(emp, mes){
+  let s = 0; Object.entries((COSTO[emp]||{})[mes]||{}).forEach(([cta,v]) => { if (categoriaCuenta(cta) !== 'Otros costos') s += v; });
+  return s;
+}
+function datosSinHoras(mesRef){
+  const ms = MESES; if (!ms.length) return null;
+  const mes = (mesRef && ms.includes(mesRef)) ? mesRef : ms[ms.length-1];
+  const horasEmp = horasPorEmpleadoMes(), { base, sin } = sinHorasEnMes(horasEmp, ms, mes);
+  const filas = sin.map(e => { const h = horasEmp[e]; const ult = ms.slice(0, ms.indexOf(mes)).filter(m => (h[m]||0) > 0).pop() || null;
+    return { cod:e, nombre: empleadosMap[e]||e, ultimoMes: ult, horasUlt: ult ? h[ult] : 0, costo: costoNominaMes(e, mes) }; }).sort((a,b) => b.costo - a.costo);
+  const tendencia = ms.slice(-8).map(m => { const r = sinHorasEnMes(horasEmp, ms, m); const pct = r.base.length ? r.sin.length/r.base.length*100 : null; return { mes:m, base:r.base.length, sin:r.sin.length, pct }; });
+  return { mes, base: base.length, filas, pct: base.length ? sin.length/base.length*100 : null, costoTotal: filas.reduce((s,f)=>s+f.costo,0), tendencia };
+}
+function calcSinHoras(){
+  const d = datosSinHoras(null);
+  if (!d) return { valor:null, texto:'—', sub:'Sin horas facturadas en el rango' };
+  return { valor:d.pct, texto: d.pct==null?'—':fmtPct(d.pct), sub: `${d.filas.length} de ${d.base} empleados facturables sin horas en ${d.mes} · nómina de ellos ${fmtM(d.costoTotal)}`, d };
+}
+
+// ── Horas sin facturar (estimado) ──
+// En BC las horas se registran junto con la factura al cierre de cada período, así que no hay horas "sin factura" en el libro
+// de proyectos. Se estima el trabajo pendiente: días desde el cierre del último período facturado × ritmo de horas de ese período.
+function proyectosPendientes(){
+  const hoy = hoyUTC(), porJob = {};
+  Object.entries(FACT).forEach(([emp, ls]) => ls.forEach(l => { if (l.periodoFin && l.job) (porJob[l.job] = porJob[l.job] || []).push({ ...l, emp }); }));
+  return Object.entries(porJob).map(([job, ls]) => {
+    const ult = ls.reduce((m,l) => l.periodoFin > m ? l.periodoFin : m, '');
+    const enUlt = ls.filter(l => l.periodoFin === ult);
+    const ini = enUlt.map(l => l.periodoIni).filter(Boolean).sort()[0] || null;
+    const diasPeriodo = ini ? Math.round((ymdUTC(ult) - ymdUTC(ini))/86400000) + 1 : null;
+    const horas = enUlt.reduce((s,l)=>s+l.horas,0), monto = enUlt.reduce((s,l)=>s+l.monto,0);
+    const dias = Math.round((hoy - ymdUTC(ult))/86400000);
+    const horasDia = diasPeriodo ? horas/diasPeriodo : null, vh = horas > 0 ? monto/horas : null;
+    const activo = dias > 0 && dias <= 120;
+    const horasEst = activo && horasDia != null ? horasDia*dias : 0;
+    const porEmp = {};
+    enUlt.forEach(l => { const x = (porEmp[l.emp] = porEmp[l.emp] || { cod:l.emp, nombre: empleadosMap[l.emp]||l.emp, horas:0 }); x.horas += l.horas; });
+    return { job, cliente: (enUlt.find(l => l.cliente) || {}).cliente || '—', periodo: enUlt[0].periodoLabel, cierre: ult,
+      facturadoEl: enUlt.map(l => l.fechaFactura).filter(Boolean).sort().pop() || null, dias, activo, diasPeriodo, horas, monto, horasDia, vh, horasEst, valorEst: vh ? horasEst*vh : 0,
+      empleados: Object.values(porEmp).map(x => ({ ...x, horasDia: diasPeriodo ? x.horas/diasPeriodo : null, horasEst: activo && diasPeriodo ? x.horas/diasPeriodo*dias : 0 })).sort((a,b)=>b.horas-a.horas) };
+  }).sort((a,b) => b.monto - a.monto);
+}
+function calcSinFacturar(){
+  const proy = proyectosPendientes(), act = proy.filter(p => p.activo);
+  const peso = act.reduce((s,p)=>s+p.monto,0);
+  const dias = peso > 0 ? act.reduce((s,p)=>s+p.dias*p.monto,0)/peso : null;
+  const horasEst = act.reduce((s,p)=>s+p.horasEst,0), valorEst = act.reduce((s,p)=>s+p.valorEst,0);
+  return { valor:dias, texto: dias==null ? '—' : `${Math.round(dias)} días`,
+    sub: dias==null ? 'No hay proyectos con períodos de facturación activos' : `≈ ${Math.round(horasEst).toLocaleString('es-MX')} horas · ${fmtM(valorEst)} estimados sin facturar`, proy, act, horasEst, valorEst };
+}
+
+// ── Facturas con vencimiento próximo ──
+function calcVencProximo(){
+  const N = PARAMS.diasVencimiento, abiertas = facturasAbiertas();
+  const vigentes = abiertas.filter(i => i.dueDate && diasDeAtraso(i.dueDate) <= 0).map(i => ({ ...i, diasParaVencer: -diasDeAtraso(i.dueDate) })).sort((a,b) => a.diasParaVencer - b.diasParaVencer);
+  const prox = vigentes.filter(i => i.diasParaVencer <= N);
+  const monto = prox.reduce((s,i)=>s+i.remainingAmount,0);
+  const vencidas = abiertas.filter(i => i.dueDate && diasDeAtraso(i.dueDate) > 0).length;
+  return { valor: prox.length, texto: `${prox.length}`,
+    sub: prox.length ? `${fmtM(monto)} vencen en los próximos ${N} días` : (vigentes.length ? `Ninguna vence en los próximos ${N} días · próxima en ${vigentes[0].diasParaVencer} días` : `Sin facturas vigentes pendientes`),
+    prox, vigentes, monto, vencidas, N };
+}
+const CALC = { rentabilidad:calcRentabilidad, rezago:calcRezago, cartera_vencida:calcCarteraVencida, dso:calcDSO, concentracion:calcConcentracion,
+  margen_operativo:calcMargenOperativo, sin_facturar:calcSinFacturar, sin_horas:calcSinHoras, valor_hora:calcValorHora, venc_proximo:calcVencProximo };
 
 // ════════════════════════════════════════════════════════════
 //  FORMATO
@@ -467,22 +638,23 @@ function renderTablero(){
   RES = {};
   KPI_ORDEN.forEach(id => { try { RES[id] = CALC[id](); } catch(e) { console.error(id, e); RES[id] = { valor:null, texto:'Error', sub:String(e.message) }; } });
   const cuenta = { rojo:0, amarillo:0, verde:0, sd:0 };
-  KPI_ORDEN.forEach(id => { RES[id].sem = semaforo(id, RES[id].valor); cuenta[RES[id].sem]++; });
+  KPI_ORDEN.forEach(id => { RES[id].sem = semaforo(id, RES[id].valorSem !== undefined ? RES[id].valorSem : RES[id].valor); cuenta[RES[id].sem]++; });
   qs('resumen').innerHTML =
     `<span class="chip">${dot('rojo',1)} ${cuenta.rojo} desviado${cuenta.rojo===1?'':'s'}</span>` +
     `<span class="chip">${dot('amarillo',1)} ${cuenta.amarillo} en atención</span>` +
     `<span class="chip">${dot('verde',1)} ${cuenta.verde} en rango</span>` +
     (cuenta.sd ? `<span class="chip">${dot('sd',1)} ${cuenta.sd} sin datos</span>` : '') +
     `<span class="chip" style="font-weight:500;color:var(--t2)">Período: ${esc(textoVentana())}</span>`;
-  qs('grid').innerHTML = KPI_ORDEN.map(id => {
+  const tarjeta = id => {
     const r = RES[id], k = KPI_DEF[id];
     return `<div class="kpi-card ${r.sem}" onclick="abrirDetalle('${id}')">
       <div class="kpi-top"><div class="kpi-name">${k.nombre}</div><div class="kpi-estado txt-${r.sem}">${dot(r.sem)} ${SEM_TXT[r.sem]}</div></div>
       <div class="kpi-valor txt-${r.sem}">${r.texto}</div>
       <div class="kpi-sub">${esc(r.sub)}</div>
       <div class="kpi-meta"><span>${metaTxt(id)}</span><span>Ver detalle ›</span></div></div>`;
-  }).join('');
-  qs('nota-pie').textContent = 'Cartera y días de venta pendientes se calculan al día de hoy. Montos en MXN. Los umbrales son propuestas iniciales: ajustalos en ⚙ Umbrales.';
+  };
+  qs('grid').innerHTML = KPI_GRUPOS.map(g => `<div class="grupo-titulo">${g.titulo}</div><div class="grid">${g.ids.map(tarjeta).join('')}</div>`).join('');
+  qs('nota-pie').textContent = 'Cartera, vencimientos y horas sin facturar se calculan al día de hoy. La rentabilidad y el tiempo de facturación se miden hasta el último mes con horas facturadas. Montos en MXN. Los umbrales son propuestas iniciales: ajustalos en ⚙ Umbrales.';
 }
 function cambiarVentana(v){ ventana = v; renderTablero(); if (PILA.length) renderVista(); }
 function toggleTheme(){
@@ -614,17 +786,106 @@ function vistaConcentracion(){
   (r.lista.length ? r.lista.map(c => `<tr><td class="l">${esc(c.cliente)}</td><td>${c.facturas}</td><td>${fmtM(c.monto)}</td><td>${fmtPct(c.monto/r.total*100)}</td><td class="l"><span class="bar" style="width:${Math.max(c.monto/max*140,2)}px"></span></td></tr>`).join('') : '<tr><td colspan="5" class="empty">Sin facturación en el rango</td></tr>') + `</tbody></table></div>
   <p class="nota">${metaTxt('concentracion')}.</p>`;
 }
-const VISTAS = { rentabilidad:vistaRentabilidad, rezago:vistaRezago, cartera_vencida:vistaCarteraVencida, dso:vistaDSO, concentracion:vistaConcentracion };
+// ── Margen operativo ──
+function vistaMargenOperativo(){
+  const r = RES.margen_operativo, t = r.t;
+  const LINEAS = [['ingresos','Ingresos por servicios'],['costo_directo','Costo directo de servicio'],['maquila_terceros','Maquila de terceros'],['estructura','Estructura / overhead']];
+  const v = mesesVentanaPL(), periodo = v ? (v.length>1 ? `${v[0]} a ${v[v.length-1]}` : v[0]) : `todo el año cargado`;
+  const tot = r.filas.reduce((a,f) => { LINEAS.forEach(([k]) => { a[k] = (a[k]||0) + f[k]; }); a.operativo = (a.operativo||0)+f.operativo; return a; }, {});
+  const cuentasLinea = k => Object.entries(r.ctas[k]).filter(([,m]) => Math.abs(m) > 0.5).sort((a,b) => Math.abs(b[1]) - Math.abs(a[1]));
+  return `<div class="formula"><b>Cómo se calcula:</b> Margen operativo = (ingresos − costo directo − maquila de terceros − estructura) ÷ ingresos, con la misma clasificación del <b>Estado de Resultados</b>. Los movimientos de Ariel y Pablo en cuentas de resultados se reclasifican como extracciones y quedan <b>fuera</b> del resultado operativo. Período: <b>${esc(periodo)}</b> (por mes de contabilización).</div>
+  <div class="stats">${stat('Ingresos', fmtM(t.ingresos))}${stat('Costo directo', fmtM(t.costo_directo))}${stat('Maquila de terceros', fmtM(t.maquila_terceros))}${stat('Estructura', fmtM(t.estructura))}${stat('Resultado operativo', fmtM(r.op))}${stat('Margen operativo', r.texto, 'txt-'+r.sem)}</div>
+  <div class="sec-title">Mes a mes</div>
+  <div class="tbl-scroll"><table><thead><tr><th class="l"></th><th class="l">Mes</th><th>Ingresos</th><th>Costo directo</th><th>Maquila terceros</th><th>Estructura</th><th>Resultado operativo</th><th>Margen</th></tr></thead><tbody>` +
+  (r.filas.length ? r.filas.map(f => { const s = f.pct==null ? 'sd' : semaforo('margen_operativo', f.pct); return `<tr><td class="l" style="width:24px">${dot(s,1)}</td><td class="l">${f.mes}</td><td>${fmtM(f.ingresos)}</td><td>${fmtM(f.costo_directo)}</td><td>${fmtM(f.maquila_terceros)}</td><td>${fmtM(f.estructura)}</td><td class="${f.operativo<0?'txt-rojo':''}">${fmtM(f.operativo)}</td><td class="txt-${s}"><b>${f.pct==null?'—':fmtPct(f.pct)}</b></td></tr>`; }).join('') +
+    `<tr class="total"><td class="l" colspan="2">Total</td><td>${fmtM(tot.ingresos)}</td><td>${fmtM(tot.costo_directo)}</td><td>${fmtM(tot.maquila_terceros)}</td><td>${fmtM(tot.estructura)}</td><td>${fmtM(tot.operativo)}</td><td>${r.texto}</td></tr>` : '<tr><td colspan="8" class="empty">Sin movimientos</td></tr>') + `</tbody></table></div>` +
+  LINEAS.map(([k,nombre]) => { const cs = cuentasLinea(k); return `<div class="sec-title">${nombre}: cuentas</div><div class="tbl-scroll"><table><thead><tr><th class="l">Cuenta</th><th>Monto</th></tr></thead><tbody>` +
+    (cs.length ? cs.map(([cta,m]) => `<tr><td class="l">${esc(((accountsByNumber[cta]||{}).displayName||cta).trim())} <span style="color:var(--t3);font-size:10px">${esc(cta)}</span></td><td>${fmtM(m)}</td></tr>`).join('') + `<tr class="total"><td class="l">Total</td><td>${fmtM(t[k])}</td></tr>` : '<tr><td colspan="2" class="empty">Sin movimientos</td></tr>') + `</tbody></table></div>`; }).join('') +
+  `<p class="nota">Fuera del resultado operativo: extracciones de socios ${fmtM(t.extracciones)}${Math.abs(t.sin_clasificar)>0.5 ? ` · cuentas de resultados sin clasificar ${fmtM(t.sin_clasificar)}` : ''}. ${metaTxt('margen_operativo')}.</p>`;
+}
+
+// ── Valor/hora promedio ──
+function vistaValorHora(){
+  const r = RES.valor_hora, por = r.por, meses = Object.keys(por).sort();
+  const cuerpoMes = meses.map((m,i) => {
+    const vh = por[m].f/por[m].h, ant = i>0 ? por[meses[i-1]].f/por[meses[i-1]].h : null, v = ant ? (vh/ant-1)*100 : null, s = v==null ? 'sd' : semaforo('valor_hora', v);
+    const rol = r.cur.includes(m) ? '<span class="badge b-ok">período actual</span>' : (r.prev.includes(m) ? '<span class="badge b-gris">período anterior</span>' : '');
+    return `<tr><td class="l" style="width:24px">${dot(s,1)}</td><td class="l">${m}</td><td>${fmtH(por[m].h)}</td><td>${fmtM(por[m].f)}</td><td><b>${fmtM(vh)}</b></td><td class="txt-${s}">${v==null?'—':(v>=0?'+':'')+v.toFixed(1)+'%'}</td><td class="l">${rol}</td></tr>`;
+  }).join('');
+  const calc = (e, set) => { let h=0, f=0; (FACT[e]||[]).forEach(l => { if (set.includes(l.mes)) { h += l.horas; f += l.monto; } }); return { h, f, vh: h>0 ? f/h : null }; };
+  const emps = Object.keys(FACT).map(e => { const a = calc(e, r.cur), b = calc(e, r.prev); const v = (a.vh!=null && b.vh!=null) ? (a.vh/b.vh-1)*100 : null; return { cod:e, nombre: empleadosMap[e]||e, h:a.h, vhA:a.vh, vhB:b.vh, v, s: v==null ? 'sd' : semaforo('valor_hora', v) }; }).filter(x => x.h > 0).sort((a,b) => (a.v==null?1e9:a.v) - (b.v==null?1e9:b.v));
+  return `<div class="formula"><b>Cómo se calcula:</b> Valor/hora = facturación (sin IVA) ÷ horas facturadas. El semáforo mide la <b>variación</b> del valor/hora del período actual (<b>${esc(r.txtCur)}</b>) frente al anterior (<b>${esc(r.txtPrev)}</b>). Los meses son los del período de servicio.</div>
+  <div class="stats">${stat('Valor/hora actual', r.vc==null?'—':fmtM(r.vc))}${stat('Valor/hora anterior', r.vp==null?'—':fmtM(r.vp))}${stat('Variación', r.variacion==null?'—':(r.variacion>=0?'+':'')+r.variacion.toFixed(1)+'%', 'txt-'+r.sem)}${stat('Meses del período actual', r.cur.join(', ')||'—')}</div>
+  <div class="sec-title">Por mes</div>
+  <div class="tbl-scroll"><table><thead><tr><th class="l"></th><th class="l">Mes</th><th>Horas</th><th>Facturación</th><th>Valor/hora</th><th>Var. vs mes anterior</th><th class="l"></th></tr></thead><tbody>${cuerpoMes || '<tr><td colspan="7" class="empty">Sin datos</td></tr>'}</tbody></table></div>
+  <div class="sec-title">Por empleado (período actual vs. anterior, de menor a mayor variación)</div>
+  <div class="tbl-scroll"><table><thead><tr><th class="l"></th><th class="l">Empleado</th><th>Horas período actual</th><th>Valor/hora actual</th><th>Valor/hora anterior</th><th>Variación</th></tr></thead><tbody>` +
+  (emps.length ? emps.map(x => `<tr><td class="l" style="width:24px">${dot(x.s,1)}</td><td class="l">${esc(x.nombre)}</td><td>${fmtH(x.h)}</td><td>${fmtM(x.vhA)}</td><td>${x.vhB==null?'—':fmtM(x.vhB)}</td><td class="txt-${x.s}"><b>${x.v==null?'—':(x.v>=0?'+':'')+x.v.toFixed(1)+'%'}</b></td></tr>`).join('') : '<tr><td colspan="6" class="empty">Sin datos</td></tr>') + `</tbody></table></div>
+  <p class="nota">${metaTxt('valor_hora')} (variación). Un cambio de valor/hora puede deberse a la mezcla de perfiles facturados, no solo a cambios de tarifa.</p>`;
+}
+
+// ── Empleados sin horas en el mes ──
+function setRefMesSH(m){ refMesSH = m; renderVista(); }
+function vistaSinHoras(){
+  const d = datosSinHoras(refMesSH); if (!d) return '<div class="empty">Sin horas facturadas</div>';
+  const sel = `<select onchange="setRefMesSH(this.value)">${[...MESES].reverse().map(m => `<option value="${m}" ${m===d.mes?'selected':''}>${m}</option>`).join('')}</select>`;
+  const s = d.pct==null ? 'sd' : semaforo('sin_horas', d.pct);
+  return `<div class="formula"><b>Cómo se calcula:</b> se consideran empleados facturables los que tienen horas en el mes de referencia o en alguno de los <b>3 meses anteriores</b>. De ellos, los que no tienen horas en el mes de referencia se cuentan como “sin horas”. Las horas se asignan al mes del período de servicio. Si el mes de referencia es el último facturado, algunas ausencias pueden corresponder a períodos todavía no cargados.</div>
+  <div class="filtros"><span class="umb-help">Mes de referencia</span> ${sel}</div>
+  <div class="stats">${stat('Mes', d.mes)}${stat('Empleados facturables', d.base)}${stat('Sin horas', d.filas.length)}${stat('% sin horas', d.pct==null?'—':fmtPct(d.pct), 'txt-'+s)}${stat('Nómina de los que no facturaron', fmtM(d.costoTotal))}</div>
+  <div class="sec-title">Empleados sin horas en ${d.mes}</div>
+  <div class="tbl-scroll"><table><thead><tr><th class="l">Empleado</th><th>Último mes con horas</th><th>Horas ese mes</th><th>Nómina en ${d.mes}</th></tr></thead><tbody>` +
+  (d.filas.length ? d.filas.map(f => `<tr><td class="l">${esc(f.nombre)} <span style="color:var(--t3);font-size:10px">${esc(f.cod)}</span></td><td>${f.ultimoMes||'—'}</td><td>${f.ultimoMes?fmtH(f.horasUlt):'—'}</td><td>${fmtM(f.costo)}</td></tr>`).join('') + `<tr class="total"><td class="l" colspan="3">Total</td><td>${fmtM(d.costoTotal)}</td></tr>` : '<tr><td colspan="4" class="empty">Todos los empleados facturables tienen horas en este mes</td></tr>') + `</tbody></table></div>
+  <div class="sec-title">Evolución (últimos meses)</div>
+  <div class="tbl-scroll"><table><thead><tr><th class="l"></th><th class="l">Mes</th><th>Empleados facturables</th><th>Sin horas</th><th>% sin horas</th></tr></thead><tbody>` +
+  d.tendencia.map(t => { const st = t.pct==null ? 'sd' : semaforo('sin_horas', t.pct); return `<tr class="click" onclick="setRefMesSH('${t.mes}')"><td class="l" style="width:24px">${dot(st,1)}</td><td class="l">${t.mes}</td><td>${t.base}</td><td>${t.sin}</td><td class="txt-${st}"><b>${t.pct==null?'—':fmtPct(t.pct)}</b></td></tr>`; }).join('') + `</tbody></table></div>
+  <p class="nota">${metaTxt('sin_horas')}. Tocá un mes de la evolución para ver el detalle de ese mes.</p>`;
+}
+
+// ── Horas sin facturar (estimado) ──
+function vistaSinFacturar(){
+  const r = RES.sin_facturar;
+  const filas = (lista) => lista.map(p => { const s = p.activo ? semaforo('sin_facturar', p.dias) : 'sd';
+    return `<tr class="click" onclick="abrirProyectoPend('${jsq(p.job)}')"><td class="l" style="width:24px">${dot(s,1)}</td><td class="l">${esc(p.job)}</td><td class="l" style="color:var(--t3)">${esc(p.cliente)}</td><td class="l">${esc(p.periodo)}</td><td>${fd(p.cierre)}</td><td>${fd(p.facturadoEl)}</td><td class="txt-${s}"><b>${p.dias}</b></td><td>${p.horasDia==null?'—':fmtH(p.horasDia)}</td><td>${p.activo?fmtH(p.horasEst):'—'}</td><td>${p.vh==null?'—':fmtM(p.vh)}</td><td>${p.activo?fmtM(p.valorEst):'—'}</td></tr>`; }).join('');
+  const act = r.proy.filter(p => p.activo), inact = r.proy.filter(p => !p.activo);
+  const cab = '<thead><tr><th class="l"></th><th class="l">Proyecto</th><th class="l">Cliente</th><th class="l">Último período facturado</th><th>Cierre del período</th><th>Facturado el</th><th>Días desde el cierre</th><th>Horas por día</th><th>Horas pendientes (est.)</th><th>Valor/hora</th><th>Valor pendiente (est.)</th></tr></thead>';
+  return `<div class="formula"><b>Cómo se calcula:</b> en Business Central las horas se registran <b>junto con la factura</b> al cerrar cada período, por eso no existen horas “sin factura” en el libro de proyectos. Este indicador <b>estima</b> el trabajo pendiente: toma el último período facturado de cada proyecto, cuenta los <b>días transcurridos desde su cierre</b> y los multiplica por el <b>ritmo de horas por día</b> de ese período, valuado al valor/hora de ese período. El semáforo mide los días desde el cierre, ponderados por la facturación de cada proyecto.</div>
+  <div class="stats">${stat('Días desde el último cierre (ponderado)', r.texto, 'txt-'+r.sem)}${stat('Horas pendientes (est.)', Math.round(r.horasEst).toLocaleString('es-MX'))}${stat('Valor pendiente (est.)', fmtM(r.valorEst))}${stat('Proyectos con período', act.length)}</div>
+  <div class="sec-title">Proyectos con facturación por períodos (tocá uno para ver los empleados)</div>
+  <div class="tbl-scroll"><table>${cab}<tbody>${act.length ? filas(act) : '<tr><td colspan="11" class="empty">No hay proyectos con períodos de facturación activos</td></tr>'}</tbody></table></div>
+  ${inact.length ? `<div class="sec-title">Sin períodos recientes (no se estiman)</div><div class="tbl-scroll"><table>${cab}<tbody>${filas(inact)}</tbody></table></div>` : ''}
+  <p class="nota">Solo se estiman proyectos cuyo cierre de período fue en los últimos 120 días. Los proyectos de alcance fijo, que no tienen períodos mensuales, no se incluyen. Es una aproximación: el ritmo real puede variar. ${metaTxt('sin_facturar')}.</p>`;
+}
+function abrirProyectoPend(job){
+  const p = RES.sin_facturar.proy.find(x => x.job === job); if (!p) return;
+  abrirVista(`Proyecto ${p.job}`, p.activo ? semaforo('sin_facturar', p.dias) : 'sd', () => `<div class="stats">${stat('Último período facturado', esc(p.periodo))}${stat('Cierre', fd(p.cierre))}${stat('Días desde el cierre', p.dias)}${stat('Horas pendientes (est.)', fmtH(p.horasEst))}${stat('Valor pendiente (est.)', fmtM(p.valorEst))}</div>
+    <div class="tbl-scroll"><table><thead><tr><th class="l">Empleado</th><th>Horas en el último período</th><th>Horas por día</th><th>Horas pendientes (est.)</th><th>Valor pendiente (est.)</th></tr></thead><tbody>` +
+    p.empleados.map(e => `<tr><td class="l">${esc(e.nombre)} <span style="color:var(--t3);font-size:10px">${esc(e.cod)}</span></td><td>${fmtH(e.horas)}</td><td>${e.horasDia==null?'—':fmtH(e.horasDia)}</td><td>${p.activo?fmtH(e.horasEst):'—'}</td><td>${p.activo&&p.vh?fmtM(e.horasEst*p.vh):'—'}</td></tr>`).join('') + `</tbody></table></div>
+    <p class="nota">Estimación con el ritmo de horas del último período facturado (${esc(p.periodo)}).</p>`);
+}
+
+// ── Facturas con vencimiento próximo ──
+function vistaVencProximo(){
+  const r = RES.venc_proximo, N = r.N;
+  const primero = r.vigentes.length ? r.vigentes[0] : null;
+  return `<div class="formula"><b>Cómo se calcula:</b> se cuentan las facturas <b>abiertas</b> (con saldo pendiente) cuyo vencimiento cae dentro de los próximos <b>${N} días</b>, incluyendo las que vencen hoy. Las ya vencidas se ven en <b>Cartera vencida</b>. Los días de anticipación se cambian en ⚙ Umbrales.</div>
+  <div class="stats">${stat('Facturas por vencer', r.prox.length, 'txt-'+r.sem)}${stat(`Monto que vence en ${N} días`, fmtM(r.monto))}${stat('Próximo vencimiento', primero ? `${fd(primero.dueDate)} (${primero.diasParaVencer} d)` : '—')}${stat('Ya vencidas', r.vencidas)}</div>
+  <div class="tbl-scroll"><table><thead><tr><th class="l"></th><th class="l">Factura</th><th class="l">Cliente</th><th>Fecha</th><th>Vencimiento</th><th>Días para vencer</th><th>Saldo pendiente</th></tr></thead><tbody>` +
+  (r.vigentes.length ? r.vigentes.map(i => { const prox = i.diasParaVencer <= N; return `<tr><td class="l" style="width:24px">${dot(prox?'amarillo':'verde',1)}</td><td class="l">${esc(i.number)}</td><td class="l">${esc(normalizarCliente(i.customerName)||'—')}</td><td>${fd(i.invoiceDate)}</td><td>${fd(i.dueDate)}</td><td class="${prox?'txt-amarillo':''}"><b>${i.diasParaVencer} d</b></td><td>${fmtM(i.remainingAmount)}</td></tr>`; }).join('') : '<tr><td colspan="7" class="empty">No hay facturas vigentes pendientes de cobro</td></tr>') + `</tbody></table></div>
+  <p class="nota">${metaTxt('venc_proximo')}. Amarillo en la tabla = vence dentro de la ventana de ${N} días.</p>`;
+}
+const VISTAS = { rentabilidad:vistaRentabilidad, rezago:vistaRezago, cartera_vencida:vistaCarteraVencida, dso:vistaDSO, concentracion:vistaConcentracion,
+  margen_operativo:vistaMargenOperativo, valor_hora:vistaValorHora, sin_horas:vistaSinHoras, sin_facturar:vistaSinFacturar, venc_proximo:vistaVencProximo };
 
 // ════════════════════════════════════════════════════════════
 //  UMBRALES (se guardan en este navegador)
 // ════════════════════════════════════════════════════════════
 function abrirUmbrales(){
   const filas = KPI_ORDEN.map(id => { const k = KPI_DEF[id], u = UMBRALES[id], un = k.unidad.trim();
-    return `<div class="umb-row"><div><b>${k.nombre}</b><div class="umb-help">${k.mejor==='mayor' ? 'Más alto es mejor' : 'Más bajo es mejor'} (${un})</div></div>
+    return `<div class="umb-row"><div><b>${k.nombre}</b><div class="umb-help">${k.etiquetaUmbral ? k.etiquetaUmbral + '· ' : ''}${k.mejor==='mayor' ? 'Más alto es mejor' : 'Más bajo es mejor'} (${un})</div></div>
       <div><div class="umb-help">${k.mejor==='mayor' ? 'Verde si ≥' : 'Verde si ≤'}</div><input type="number" step="any" id="umb-${id}-verde" value="${u.verde}"></div>
       <div><div class="umb-help">${k.mejor==='mayor' ? 'Amarillo si ≥' : 'Amarillo si ≤'}</div><input type="number" step="any" id="umb-${id}-amarillo" value="${u.amarillo}"></div></div>`; }).join('');
-  PILA = [{ titulo:'Umbrales de los semáforos', sem:null, render:() => `<div class="formula">Por debajo del umbral amarillo (o por encima, según el indicador) el semáforo se pone en <b>rojo</b>. Los cambios se guardan <b>en este navegador</b>.</div>${filas}<div id="umb-msg" class="nota" style="color:var(--red);min-height:18px"></div><div style="display:flex;gap:8px;margin-top:8px"><button class="btn primary" onclick="guardarUmbrales()">Guardar</button><button class="btn" onclick="restablecerUmbrales()">Restablecer valores propuestos</button></div>` }];
+  PILA = [{ titulo:'Umbrales de los semáforos', sem:null, render:() => `<div class="formula">Por debajo del umbral amarillo (o por encima, según el indicador) el semáforo se pone en <b>rojo</b>. Los cambios se guardan <b>en este navegador</b>.</div>${filas}<div class="umb-row"><div><b>Vencimientos próximos</b><div class="umb-help">Días de anticipación para contar una factura como "por vencer"</div></div><div><div class="umb-help">Días</div><input type="number" min="1" step="1" id="par-diasVencimiento" value="${PARAMS.diasVencimiento}"></div><div></div></div><div id="umb-msg" class="nota" style="color:var(--red);min-height:18px"></div><div style="display:flex;gap:8px;margin-top:8px"><button class="btn primary" onclick="guardarUmbrales()">Guardar</button><button class="btn" onclick="restablecerUmbrales()">Restablecer valores propuestos</button></div>` }];
   renderVista(); qs('overlay').classList.add('active');
 }
 function guardarUmbrales(){
@@ -635,10 +896,12 @@ function guardarUmbrales(){
     if (KPI_DEF[id].mejor==='mayor' ? v < a : v > a) { qs('umb-msg').textContent = `“${KPI_DEF[id].nombre}”: el umbral verde debe ser ${KPI_DEF[id].mejor==='mayor' ? 'mayor o igual' : 'menor o igual'} que el amarillo.`; return; }
     nuevo[id] = { verde:v, amarillo:a };
   }
-  try { localStorage.setItem(UMB_KEY, JSON.stringify(nuevo)); } catch(e) {}
-  UMBRALES = cargarUmbrales(); cerrarDetalle(); renderTablero();
+  const dv = parseFloat(qs('par-diasVencimiento').value);
+  if (isNaN(dv) || dv < 1) { qs('umb-msg').textContent = 'Los días de anticipación para vencimientos deben ser 1 o más.'; return; }
+  try { localStorage.setItem(UMB_KEY, JSON.stringify(nuevo)); localStorage.setItem(PARAMS_KEY, JSON.stringify({ diasVencimiento: Math.round(dv) })); } catch(e) {}
+  UMBRALES = cargarUmbrales(); PARAMS = cargarParams(); cerrarDetalle(); renderTablero();
 }
-function restablecerUmbrales(){ try { localStorage.removeItem(UMB_KEY); } catch(e) {} UMBRALES = cargarUmbrales(); cerrarDetalle(); renderTablero(); }
+function restablecerUmbrales(){ try { localStorage.removeItem(UMB_KEY); localStorage.removeItem(PARAMS_KEY); } catch(e) {} UMBRALES = cargarUmbrales(); PARAMS = cargarParams(); cerrarDetalle(); renderTablero(); }
 
 // ════════════════════════════════════════════════════════════
 //  CARGA
